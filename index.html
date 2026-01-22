@@ -833,7 +833,7 @@
                     <div style={{ marginBottom: '10px' }}>
                       <EditableNumber value={yearsWorked} onChange={setYearsWorked} formatDisplay={(v) => v.toString()} suffix="yrs" min={1} max={15} step={1} fontSize="24px" mobileFontSize="22px" />
                     </div>
-                    <input type="range" min="1" max="20" step="1" value={yearsWorked} onChange={(e) => setYearsWorked(Number(e.target.value))} />
+                    <input type="range" min="1" max="15" step="1" value={yearsWorked} onChange={(e) => setYearsWorked(Number(e.target.value))} />
                   </div>
                 </div>
 
@@ -916,7 +916,10 @@
                     </div>
                   </div>
                   <div style={{ marginTop: '16px', color: 'rgba(255,255,255,0.4)', fontSize: '12px', textAlign: 'center' }}>
-                    Bull case is <span style={{ color: '#2ecc71', fontWeight: '700' }}>{((finalScenarioValues.bull / finalScenarioValues.base - 1) * 100).toFixed(0)}%</span> higher than base case by {startYear + yearsWorked - 1}. *Based on a rough estimate of the 60% growth rate Quantinuum has achieved since the merger. Past performance does not guarantee future results.
+                    Bull case is <span style={{ color: '#2ecc71', fontWeight: '700' }}>{((finalScenarioValues.bull / finalScenarioValues.base - 1) * 100).toFixed(0)}%</span> higher than base case by {startYear + yearsWorked - 1}
+                  </div>
+                  <div style={{ marginTop: '8px', color: 'rgba(255,255,255,0.25)', fontSize: '10px', textAlign: 'center', fontStyle: 'italic' }}>
+                    *Based on a rough estimate of the 60% growth rate Quantinuum has achieved since the merger. Past performance does not guarantee future results.
                   </div>
                 </div>
               </div>
