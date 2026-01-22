@@ -300,10 +300,9 @@
       const [rsuAmount, setRsuAmount] = useState(1000);
       const [ipoValuation, setIpoValuation] = useState(17.5);
       const [showAdvanced, setShowAdvanced] = useState(false);
-      const [showHistoricalGrants, setShowHistoricalGrants] = useState(false);
       const [totalShares, setTotalShares] = useState(450);
-      const [yearsWorked, setYearsWorked] = useState(5);
-      const [startYear, setStartYear] = useState(2022);
+      const [yearsWorked, setYearsWorked] = useState(8);
+      const [startYear, setStartYear] = useState(2023);
       const [activeTab, setActiveTab] = useState('scenarios');
       
       const [historicalGrants, setHistoricalGrants] = useState({
@@ -329,11 +328,14 @@
       const scenarioData = useMemo(() => {
         const data = [];
         const IPO_YEAR = 2027;
+        let cumulativeGranted = 0;
         
         for (let i = 0; i < yearsWorked; i++) {
           const calendarYear = startYear + i;
-          let vested = 0;
+          const grantThisYear = getGrantForYear(calendarYear);
+          cumulativeGranted += grantThisYear;
           
+          let vested = 0;
           for (let g = 0; g <= i; g++) {
             const grantCalendarYear = startYear + g;
             const grantAmount = getGrantForYear(grantCalendarYear);
@@ -352,7 +354,10 @@
             year: `'${String(calendarYear).slice(2)}`,
             fullYear: calendarYear,
             yearIndex: i,
+            grantThisYear: grantThisYear,
+            totalGranted: cumulativeGranted,
             vested: Math.round(vested),
+            unvested: Math.round(cumulativeGranted - vested),
             base: vested * basePrice,
             bull: vested * bullPrice,
             baseValuation: ipoValuation * baseMultiplier,
@@ -370,10 +375,38 @@
           base: last?.base || 0,
           bull: last?.bull || 0,
           vested: last?.vested || 0,
+          unvested: last?.unvested || 0,
+          totalGranted: last?.totalGranted || 0,
           baseValuation: last?.baseValuation || ipoValuation,
           bullValuation: last?.bullValuation || ipoValuation,
         };
       }, [scenarioData, ipoValuation]);
+
+      // IPO stats (2027)
+      const ipoStats = useMemo(() => {
+        const IPO_YEAR = 2027;
+        const ipoYearData = scenarioData.find(d => d.fullYear === IPO_YEAR);
+        
+        let vestedAtIpo = 0;
+        let totalGrantedAtIpo = 0;
+        
+        if (ipoYearData) {
+          vestedAtIpo = ipoYearData.vested;
+          totalGrantedAtIpo = ipoYearData.totalGranted;
+        } else if (startYear + yearsWorked - 1 < IPO_YEAR) {
+          // Timeline ends before IPO
+          vestedAtIpo = finalScenarioValues.vested;
+          totalGrantedAtIpo = finalScenarioValues.totalGranted;
+        }
+        
+        return {
+          singleGrantValue: rsuAmount * pricePerShare,
+          cumulativeValueAtIpo: vestedAtIpo * pricePerShare,
+          vestedAtIpo,
+          totalGrantedAtIpo,
+          sharePrice: pricePerShare,
+        };
+      }, [rsuAmount, pricePerShare, scenarioData, startYear, yearsWorked, finalScenarioValues]);
 
       const toggleYear = (year) => {
         setEnabledYears(prev => ({ ...prev, [year]: !prev[year] }));
@@ -446,6 +479,8 @@
       };
 
       const availableYears = [2020, 2021, 2022, 2023, 2024, 2025, 2026];
+      
+      const getYearLabel = (year) => year === 2020 ? "Pre-merger RSUs" : year;
 
       return (
         <div style={{ 
@@ -627,26 +662,6 @@
                 </div>
               </div>
 
-              {/* Share Price */}
-              <div style={{ 
-                marginTop: '28px',
-                padding: '14px 20px',
-                background: 'rgba(45, 212, 191, 0.06)',
-                borderRadius: '14px',
-                border: '1px solid rgba(45, 212, 191, 0.15)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexWrap: 'wrap',
-                gap: '8px'
-              }}>
-                <span style={{ color: 'rgba(255,255,255,0.45)', fontSize: '13px' }}>Share price:</span>
-                <span style={{ color: '#2dd4bf', fontWeight: '700', fontSize: '17px' }}>${pricePerShare.toFixed(2)}</span>
-                <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: '11px' }}>
-                  ({ipoValuation}B ÷ {totalShares}M)
-                </span>
-              </div>
-
               {/* Advanced Toggle */}
               <button className="expand-btn" onClick={() => setShowAdvanced(!showAdvanced)} style={{ marginTop: '20px' }}>
                 <span className="icon-box">{showAdvanced ? '−' : '+'}</span>
@@ -667,131 +682,123 @@
                   </div>
 
                   <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '20px' }}>
-                    <button className="expand-btn" onClick={() => setShowHistoricalGrants(!showHistoricalGrants)} style={{ padding: 0, marginBottom: showHistoricalGrants ? '16px' : 0 }}>
-                      <span className="icon-box">{showHistoricalGrants ? '−' : '+'}</span>
-                      Customize Past Grants
-                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+                      <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: 'rgba(45, 212, 191, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', color: '#2dd4bf' }}>📅</div>
+                      <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: '14px', fontWeight: '500' }}>Customize Past Grants</span>
+                    </div>
 
-                    {showHistoricalGrants && (
-                      <div>
-                        <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)', marginBottom: '16px', lineHeight: 1.5 }}>
-                          Tap years to customize. Others use default: <span style={{ color: '#2dd4bf', fontWeight: '600' }}>{formatNumber(rsuAmount)}</span>
-                        </p>
-                        
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '20px' }}>
-                          {availableYears.map(year => (
-                            <button key={year} className={`year-chip ${enabledYears[year] ? 'on' : 'off'}`} onClick={() => toggleYear(year)}>
-                              {year}
-                            </button>
-                          ))}
-                        </div>
-
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                          {availableYears.filter(year => enabledYears[year]).map(year => (
-                            <div key={year} style={{ padding: '16px', background: 'rgba(45, 212, 191, 0.05)', borderRadius: '12px', border: '1px solid rgba(45, 212, 191, 0.15)' }}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
-                                <span style={{ color: '#2dd4bf', fontSize: '14px', fontWeight: '600' }}>{year}</span>
-                                <EditableNumber value={historicalGrants[year] || rsuAmount} onChange={(v) => updateHistoricalGrant(year, v)} formatDisplay={(v) => `${formatNumber(v)}`} suffix="shares" min={0} max={10000000} step={1} fontSize="16px" mobileFontSize="15px" />
-                              </div>
-                              <input
-                                type="range"
-                                min="0"
-                                max="460"
-                                step="1"
-                                value={valueToSlider(historicalGrants[year] || rsuAmount)}
-                                onChange={(e) => updateHistoricalGrant(year, sliderToValue(Number(e.target.value)))}
-                              />
-                            </div>
-                          ))}
-                        </div>
+                    <div>
+                      <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)', marginBottom: '16px', lineHeight: 1.5 }}>
+                        Tap years to customize. Others use default: <span style={{ color: '#2dd4bf', fontWeight: '600' }}>{formatNumber(rsuAmount)}</span>
+                      </p>
+                      
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '20px' }}>
+                        {availableYears.map(year => (
+                          <button key={year} className={`year-chip ${enabledYears[year] ? 'on' : 'off'}`} onClick={() => toggleYear(year)}>
+                            {getYearLabel(year)}
+                          </button>
+                        ))}
                       </div>
-                    )}
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        {availableYears.filter(year => enabledYears[year]).map(year => (
+                          <div key={year} style={{ padding: '16px', background: 'rgba(45, 212, 191, 0.05)', borderRadius: '12px', border: '1px solid rgba(45, 212, 191, 0.15)' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                              <span style={{ color: '#2dd4bf', fontSize: '14px', fontWeight: '600' }}>{getYearLabel(year)}</span>
+                              <EditableNumber value={historicalGrants[year] || rsuAmount} onChange={(v) => updateHistoricalGrant(year, v)} formatDisplay={(v) => `${formatNumber(v)}`} suffix="shares" min={0} max={10000000} step={1} fontSize="16px" mobileFontSize="15px" />
+                            </div>
+                            <input
+                              type="range"
+                              min="0"
+                              max="460"
+                              step="1"
+                              value={valueToSlider(historicalGrants[year] || rsuAmount)}
+                              onChange={(e) => updateHistoricalGrant(year, sliderToValue(Number(e.target.value)))}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
             </div>
 
-            {/* Scenario Summary Cards */}
+            {/* IPO Summary Card */}
             <div style={{ 
-              display: 'grid', 
-              gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)', 
-              gap: '16px',
-              marginBottom: '20px'
+              background: 'linear-gradient(165deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%)',
+              backdropFilter: 'blur(40px)',
+              border: '1px solid rgba(45, 212, 191, 0.2)',
+              borderRadius: '20px',
+              padding: isMobile ? '24px 20px' : '28px',
+              marginBottom: '20px',
+              position: 'relative',
+              overflow: 'hidden'
             }}>
-              {/* Base Case Card */}
+              <div style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                height: '3px',
+                background: 'linear-gradient(90deg, #2dd4bf, #14b8a6, #2ecc71)'
+              }} />
+              
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '20px' }}>
+                <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#2dd4bf', boxShadow: '0 0 8px #2dd4bf' }} />
+                <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                  IPO Projected Value
+                </span>
+              </div>
+              
               <div style={{ 
-                background: 'linear-gradient(165deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%)',
-                backdropFilter: 'blur(40px)',
-                border: '1px solid rgba(45, 212, 191, 0.25)',
-                borderRadius: '20px',
-                padding: isMobile ? '20px' : '24px',
-                position: 'relative',
-                overflow: 'hidden'
+                display: 'grid', 
+                gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)', 
+                gap: isMobile ? '16px' : '24px',
+                marginBottom: '20px'
               }}>
-                <div style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  height: '3px',
-                  background: 'linear-gradient(90deg, #2dd4bf, #14b8a6)'
-                }} />
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                  <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#2dd4bf', boxShadow: '0 0 8px #2dd4bf' }} />
-                  <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                    Base Case
-                  </span>
+                <div>
+                  <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Single Grant Value
+                  </div>
+                  <div style={{ fontSize: isMobile ? '28px' : '32px', fontWeight: '700', color: '#2dd4bf', letterSpacing: '-0.02em' }}>
+                    {formatCurrency(ipoStats.singleGrantValue)}
+                  </div>
+                  <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '11px', marginTop: '4px' }}>
+                    {formatNumber(rsuAmount)} shares fully vested
+                  </div>
                 </div>
-                <div style={{ fontSize: isMobile ? '32px' : '40px', fontWeight: '700', color: '#fff', letterSpacing: '-0.03em', marginBottom: '8px' }}>
-                  {formatCurrency(finalScenarioValues.base)}
-                </div>
-                <div style={{ color: '#2dd4bf', fontSize: '13px', fontWeight: '600' }}>
-                  {BASE_GROWTH}% Annual Growth
-                </div>
-                <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '12px', marginTop: '4px' }}>
-                  S&P 500 Historical CAGR
-                </div>
-                <div style={{ color: 'rgba(255,255,255,0.25)', fontSize: '11px', marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-                  {startYear + yearsWorked - 1} valuation: ${finalScenarioValues.baseValuation.toFixed(1)}B
+                
+                <div>
+                  <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Vested by IPO
+                  </div>
+                  <div style={{ fontSize: isMobile ? '28px' : '32px', fontWeight: '700', color: '#fff', letterSpacing: '-0.02em' }}>
+                    {formatCurrency(ipoStats.cumulativeValueAtIpo)}
+                  </div>
+                  <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '11px', marginTop: '4px' }}>
+                    {formatNumber(ipoStats.vestedAtIpo)} of {formatNumber(ipoStats.totalGrantedAtIpo)} shares
+                  </div>
                 </div>
               </div>
-
-              {/* Bull Case Card */}
+              
+              {/* Share Price */}
               <div style={{ 
-                background: 'linear-gradient(165deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%)',
-                backdropFilter: 'blur(40px)',
-                border: '1px solid rgba(46, 204, 113, 0.25)',
-                borderRadius: '20px',
-                padding: isMobile ? '20px' : '24px',
-                position: 'relative',
-                overflow: 'hidden'
+                padding: '14px 20px',
+                background: 'rgba(45, 212, 191, 0.06)',
+                borderRadius: '14px',
+                border: '1px solid rgba(45, 212, 191, 0.15)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexWrap: 'wrap',
+                gap: '8px'
               }}>
-                <div style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  height: '3px',
-                  background: 'linear-gradient(90deg, #2ecc71, #27ae60)'
-                }} />
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                  <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#2ecc71', boxShadow: '0 0 8px #2ecc71' }} />
-                  <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                    Bull Case
-                  </span>
-                </div>
-                <div style={{ fontSize: isMobile ? '32px' : '40px', fontWeight: '700', color: '#fff', letterSpacing: '-0.03em', marginBottom: '8px' }}>
-                  {formatCurrency(finalScenarioValues.bull)}
-                </div>
-                <div style={{ color: '#2ecc71', fontSize: '13px', fontWeight: '600' }}>
-                  {BULL_GROWTH}% Annual Growth
-                </div>
-                <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '12px', marginTop: '4px' }}>
-                  Quantinuum CAGR Since Merger
-                </div>
-                <div style={{ color: 'rgba(255,255,255,0.25)', fontSize: '11px', marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-                  {startYear + yearsWorked - 1} valuation: ${finalScenarioValues.bullValuation.toFixed(1)}B
-                </div>
+                <span style={{ color: 'rgba(255,255,255,0.45)', fontSize: '13px' }}>Share price at IPO:</span>
+                <span style={{ color: '#2dd4bf', fontWeight: '700', fontSize: '17px' }}>${pricePerShare.toFixed(2)}</span>
+                <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: '11px' }}>
+                  (${ipoValuation}B ÷ {totalShares}M shares)
+                </span>
               </div>
             </div>
 
@@ -821,9 +828,9 @@
                       Start Year
                     </label>
                     <div style={{ marginBottom: '10px' }}>
-                      <EditableNumber value={startYear} onChange={setStartYear} formatDisplay={(v) => v.toString()} min={2020} max={2026} step={1} fontSize="24px" mobileFontSize="22px" />
+                      <EditableNumber value={startYear} onChange={setStartYear} formatDisplay={(v) => v.toString()} min={2021} max={2026} step={1} fontSize="24px" mobileFontSize="22px" />
                     </div>
-                    <input type="range" min="2020" max="2026" step="1" value={startYear} onChange={(e) => setStartYear(Number(e.target.value))} />
+                    <input type="range" min="2021" max="2026" step="1" value={startYear} onChange={(e) => setStartYear(Number(e.target.value))} />
                   </div>
 
                   <div className="card-inner" style={{ padding: isMobile ? '18px 16px' : '20px' }}>
@@ -831,9 +838,9 @@
                       Years at Company
                     </label>
                     <div style={{ marginBottom: '10px' }}>
-                      <EditableNumber value={yearsWorked} onChange={setYearsWorked} formatDisplay={(v) => v.toString()} suffix="yrs" min={1} max={15} step={1} fontSize="24px" mobileFontSize="22px" />
+                      <EditableNumber value={yearsWorked} onChange={setYearsWorked} formatDisplay={(v) => v.toString()} suffix="yrs" min={1} max={10} step={1} fontSize="24px" mobileFontSize="22px" />
                     </div>
-                    <input type="range" min="1" max="15" step="1" value={yearsWorked} onChange={(e) => setYearsWorked(Number(e.target.value))} />
+                    <input type="range" min="1" max="10" step="1" value={yearsWorked} onChange={(e) => setYearsWorked(Number(e.target.value))} />
                   </div>
                 </div>
 
@@ -897,29 +904,51 @@
                   border: '1px solid rgba(255,255,255,0.05)'
                 }}>
                   <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px', marginBottom: '16px', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: '600' }}>
-                    {startYear + yearsWorked - 1} Outcomes
+                    {startYear + yearsWorked - 1} Portfolio Value
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '12px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', background: 'rgba(45, 212, 191, 0.1)', borderRadius: '12px', border: '1px solid rgba(45, 212, 191, 0.25)' }}>
-                      <div>
-                        <div style={{ color: '#2dd4bf', fontSize: '12px', fontWeight: '600' }}>Base Case</div>
-                        <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '11px' }}>{BASE_GROWTH}% CAGR</div>
+                    <div style={{ padding: '18px', background: 'rgba(45, 212, 191, 0.1)', borderRadius: '12px', border: '1px solid rgba(45, 212, 191, 0.25)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                        <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#2dd4bf' }} />
+                        <span style={{ color: '#2dd4bf', fontSize: '12px', fontWeight: '600' }}>Base Case</span>
+                        <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '10px' }}>({BASE_GROWTH}% CAGR)</span>
                       </div>
-                      <div style={{ color: '#fff', fontSize: '22px', fontWeight: '700' }}>{formatCurrency(finalScenarioValues.base)}</div>
+                      <div style={{ fontSize: '28px', fontWeight: '700', color: '#fff', marginBottom: '8px' }}>{formatCurrency(finalScenarioValues.base)}</div>
+                      <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '11px' }}>
+                        Company valuation: <span style={{ color: 'rgba(255,255,255,0.6)' }}>${finalScenarioValues.baseValuation.toFixed(1)}B</span>
+                      </div>
+                      <div style={{ color: 'rgba(255,255,255,0.25)', fontSize: '10px', marginTop: '2px' }}>
+                        S&P 500 historical average
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', background: 'rgba(46, 204, 113, 0.1)', borderRadius: '12px', border: '1px solid rgba(46, 204, 113, 0.25)' }}>
-                      <div>
-                        <div style={{ color: '#2ecc71', fontSize: '12px', fontWeight: '600' }}>Bull Case</div>
-                        <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '11px' }}>{BULL_GROWTH}% CAGR</div>
+                    <div style={{ padding: '18px', background: 'rgba(46, 204, 113, 0.1)', borderRadius: '12px', border: '1px solid rgba(46, 204, 113, 0.25)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                        <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#2ecc71' }} />
+                        <span style={{ color: '#2ecc71', fontSize: '12px', fontWeight: '600' }}>Bull Case</span>
+                        <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '10px' }}>({BULL_GROWTH}% CAGR)</span>
                       </div>
-                      <div style={{ color: '#fff', fontSize: '22px', fontWeight: '700' }}>{formatCurrency(finalScenarioValues.bull)}</div>
+                      <div style={{ fontSize: '28px', fontWeight: '700', color: '#fff', marginBottom: '8px' }}>{formatCurrency(finalScenarioValues.bull)}</div>
+                      <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '11px' }}>
+                        Company valuation: <span style={{ color: 'rgba(255,255,255,0.6)' }}>${finalScenarioValues.bullValuation.toFixed(1)}B</span>
+                      </div>
+                      <div style={{ color: 'rgba(255,255,255,0.25)', fontSize: '10px', marginTop: '2px' }}>
+                        Quantinuum growth since merger
+                      </div>
                     </div>
                   </div>
-                  <div style={{ marginTop: '16px', color: 'rgba(255,255,255,0.4)', fontSize: '12px', textAlign: 'center' }}>
-                    Bull case is <span style={{ color: '#2ecc71', fontWeight: '700' }}>{((finalScenarioValues.bull / finalScenarioValues.base - 1) * 100).toFixed(0)}%</span> higher than base case by {startYear + yearsWorked - 1}
+                  <div style={{ marginTop: '16px', padding: '12px 16px', background: 'rgba(255,255,255,0.03)', borderRadius: '10px', textAlign: 'center' }}>
+                    <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>
+                      Bull case is <span style={{ color: '#2ecc71', fontWeight: '700' }}>{((finalScenarioValues.bull / finalScenarioValues.base - 1) * 100).toFixed(0)}%</span> higher
+                    </span>
+                    <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: '11px', marginLeft: '8px' }}>
+                      ({formatNumber(finalScenarioValues.vested)} shares vested)
+                    </span>
                   </div>
-                  <div style={{ marginTop: '8px', color: 'rgba(255,255,255,0.25)', fontSize: '10px', textAlign: 'center', fontStyle: 'italic' }}>
-                    *Based on a rough estimate of the 60% growth rate Quantinuum has achieved since the merger. Past performance does not guarantee future results.
+                  <div style={{ marginTop: '12px', color: 'rgba(255,255,255,0.3)', fontSize: '10px', textAlign: 'center', lineHeight: 1.5 }}>
+                    IPO: Assumed 2027 at slider valuation • Base: 10% CAGR (S&P 500 historical) • Bull: 60% CAGR (Quantinuum since merger)
+                  </div>
+                  <div style={{ marginTop: '10px', color: 'rgba(255,255,255,0.2)', fontSize: '10px', textAlign: 'center', fontStyle: 'italic', lineHeight: 1.4 }}>
+                    *For illustrative purposes only. This calculator does not constitute financial, tax, or investment advice. Projections do not account for taxes, fees, dilution from future funding rounds, or other factors that may significantly impact actual returns. Past performance does not guarantee future results. Consult a qualified financial advisor before making investment decisions.
                   </div>
                 </div>
               </div>
@@ -929,138 +958,82 @@
               <div className="card" style={{ padding: isMobile ? '24px 20px' : '36px' }}>
                 <div style={{ marginBottom: '24px' }}>
                   <h2 style={{ fontSize: '18px', fontWeight: '600', color: 'white', marginBottom: '4px' }}>
-                    Vesting Timeline
+                    Vesting Schedule
                   </h2>
                   <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>
-                    {formatNumber(rsuAmount)} shares granted annually, 25% vesting per year
+                    4-year vesting: 25% annually
                   </p>
                 </div>
 
-                {/* Summary Stats */}
-                {(() => {
-                  const lastYear = scenarioData[scenarioData.length - 1];
-                  const totalGranted = yearsWorked * rsuAmount;
-                  const totalVested = lastYear?.vested || 0;
-                  const totalUnvested = totalGranted - totalVested;
-                  return (
-                    <div style={{ 
-                      display: 'grid', 
-                      gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', 
-                      gap: '12px',
-                      marginBottom: '24px'
-                    }}>
-                      <div className="stat-box">
-                        <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '6px', fontWeight: '600' }}>Granted</p>
-                        <p style={{ color: 'white', fontWeight: '600', fontSize: isMobile ? '18px' : '20px' }}>{formatNumber(totalGranted)}</p>
-                      </div>
-                      <div className="stat-box">
-                        <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '6px', fontWeight: '600' }}>Vested</p>
-                        <p style={{ color: 'white', fontWeight: '600', fontSize: isMobile ? '18px' : '20px' }}>{formatNumber(totalVested)}</p>
-                      </div>
-                      <div className="stat-box">
-                        <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '6px', fontWeight: '600' }}>Unvested</p>
-                        <p style={{ color: '#f87171', fontWeight: '600', fontSize: isMobile ? '18px' : '20px' }}>{formatNumber(totalUnvested)}</p>
-                      </div>
-                      <div className="stat-box highlight">
-                        <p style={{ color: 'rgba(45, 212, 191, 0.8)', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '6px', fontWeight: '600' }}>Base Value</p>
-                        <p style={{ color: '#2dd4bf', fontWeight: '700', fontSize: isMobile ? '18px' : '20px' }}>{formatCurrency(lastYear?.base || 0)}</p>
-                      </div>
-                    </div>
-                  );
-                })()}
+                {/* Clean Table */}
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '500px' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                        <th style={{ padding: '12px 8px', textAlign: 'left', color: 'rgba(255,255,255,0.4)', fontSize: '10px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Year</th>
+                        <th style={{ padding: '12px 8px', textAlign: 'right', color: 'rgba(255,255,255,0.4)', fontSize: '10px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.08em' }}>New Vesting</th>
+                        <th style={{ padding: '12px 8px', textAlign: 'right', color: 'rgba(255,255,255,0.4)', fontSize: '10px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.08em' }}>New Value</th>
+                        <th style={{ padding: '12px 8px', textAlign: 'right', color: 'rgba(255,255,255,0.4)', fontSize: '10px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Total Vested</th>
+                        <th style={{ padding: '12px 8px', textAlign: 'right', color: 'rgba(45, 212, 191, 0.6)', fontSize: '10px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Portfolio Base</th>
+                        <th style={{ padding: '12px 8px', textAlign: 'right', color: 'rgba(46, 204, 113, 0.6)', fontSize: '10px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Portfolio Bull</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {scenarioData.map((year, i) => {
+                        const prevVested = i > 0 ? scenarioData[i-1].vested : 0;
+                        const newlyVested = year.vested - prevVested;
+                        const newVestingBaseValue = newlyVested * year.basePrice;
+                        const newVestingBullValue = newlyVested * year.bullPrice;
+                        const isLastRow = i === scenarioData.length - 1;
+                        
+                        return (
+                          <tr 
+                            key={i} 
+                            style={{ 
+                              borderBottom: isLastRow ? 'none' : '1px solid rgba(255,255,255,0.05)',
+                              background: isLastRow ? 'rgba(45, 212, 191, 0.05)' : 'transparent'
+                            }}
+                          >
+                            <td style={{ padding: '14px 8px', color: 'white', fontSize: '14px', fontWeight: '600' }}>
+                              {year.fullYear}
+                            </td>
+                            <td style={{ padding: '14px 8px', textAlign: 'right', color: 'rgba(255,255,255,0.6)', fontSize: '14px' }}>
+                              +{formatNumber(newlyVested)}
+                            </td>
+                            <td style={{ padding: '14px 8px', textAlign: 'right' }}>
+                              <div style={{ color: '#2dd4bf', fontSize: '13px', fontWeight: '500' }}>{formatCurrency(newVestingBaseValue)}</div>
+                              <div style={{ color: '#2ecc71', fontSize: '11px', opacity: 0.8 }}>{formatCurrency(newVestingBullValue)}</div>
+                            </td>
+                            <td style={{ padding: '14px 8px', textAlign: 'right', color: 'white', fontSize: '14px', fontWeight: '500' }}>
+                              {formatNumber(year.vested)}
+                            </td>
+                            <td style={{ padding: '14px 8px', textAlign: 'right', color: '#2dd4bf', fontSize: '14px', fontWeight: '600' }}>
+                              {formatCurrency(year.base)}
+                            </td>
+                            <td style={{ padding: '14px 8px', textAlign: 'right', color: '#2ecc71', fontSize: '14px', fontWeight: '600' }}>
+                              {formatCurrency(year.bull)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {scenarioData.map((year, i) => {
-                    const prevVested = i > 0 ? scenarioData[i-1].vested : 0;
-                    const newlyVested = year.vested - prevVested;
-                    const totalGrantedSoFar = (i + 1) * rsuAmount;
-                    const percentVested = (year.vested / totalGrantedSoFar) * 100;
-                    
-                    return (
-                      <div key={i} style={{ 
-                        display: 'flex', 
-                        alignItems: 'stretch',
-                        gap: '16px',
-                        padding: '18px 20px',
-                        background: 'rgba(255,255,255,0.02)',
-                        borderRadius: '16px',
-                        border: '1px solid rgba(255,255,255,0.05)'
-                      }}>
-                        <div style={{ 
-                          width: '56px', 
-                          display: 'flex', 
-                          flexDirection: 'column',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          flexShrink: 0
-                        }}>
-                          <div style={{ color: '#2dd4bf', fontSize: '18px', fontWeight: '700' }}>{year.fullYear}</div>
-                          <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '10px' }}>Year {i + 1}</div>
-                        </div>
-                        
-                        <div style={{ width: '1px', background: 'rgba(255,255,255,0.08)', flexShrink: 0 }} />
-                        
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
-                            <div>
-                              <span style={{ color: '#2ecc71', fontSize: '15px', fontWeight: '600' }}>+{formatNumber(newlyVested)}</span>
-                              <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: '12px' }}> vesting</span>
-                            </div>
-                            <div style={{ textAlign: 'right' }}>
-                              <div style={{ color: '#2dd4bf', fontSize: '14px', fontWeight: '600' }}>{formatCurrency(year.base)}</div>
-                              <div style={{ color: '#2ecc71', fontSize: '12px' }}>{formatCurrency(year.bull)} bull</div>
-                            </div>
-                          </div>
-                          
-                          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                            <div style={{ flex: 1, height: '6px', background: 'rgba(255,255,255,0.06)', borderRadius: '3px', overflow: 'hidden' }}>
-                              <div style={{ 
-                                width: `${percentVested}%`, 
-                                height: '100%', 
-                                background: 'linear-gradient(90deg, #2dd4bf, #2ecc71)',
-                                borderRadius: '3px',
-                                transition: 'width 0.3s ease',
-                                boxShadow: '0 0 12px rgba(45, 212, 191, 0.4)'
-                              }} />
-                            </div>
-                            <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px', width: '36px', flexShrink: 0 }}>{percentVested.toFixed(0)}%</span>
-                          </div>
-                          
-                          <div style={{ display: 'flex', gap: '16px', marginTop: '10px', flexWrap: 'wrap' }}>
-                            <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px' }}>
-                              Vested: <span style={{ color: 'white', fontWeight: '500' }}>{formatNumber(year.vested)}</span>
-                            </span>
-                            <span style={{ color: '#f87171', fontSize: '11px' }}>
-                              Unvested: {formatNumber(totalGrantedSoFar - year.vested)}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                {/* Forfeiture Note */}
+                <div style={{ 
+                  marginTop: '20px', 
+                  padding: '14px 16px', 
+                  background: 'rgba(248, 113, 113, 0.08)', 
+                  borderRadius: '12px',
+                  border: '1px solid rgba(248, 113, 113, 0.15)'
+                }}>
+                  <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '12px', lineHeight: 1.5 }}>
+                    <span style={{ color: '#f87171', fontWeight: '600' }}>If you leave:</span> Unvested shares are forfeited. After {yearsWorked} years, you'd have <span style={{ color: 'white', fontWeight: '600' }}>{formatNumber(finalScenarioValues.vested)}</span> vested shares ({formatNumber(finalScenarioValues.totalGranted)} granted) and forfeit <span style={{ color: '#f87171', fontWeight: '600' }}>{formatNumber(finalScenarioValues.unvested)}</span> unvested.
+                  </p>
                 </div>
               </div>
             )}
-
-            {/* Disclaimer */}
-            <div style={{ 
-              marginTop: '20px',
-              padding: '16px 20px',
-              borderRadius: '14px',
-              border: '1px solid rgba(255,255,255,0.05)',
-              background: 'rgba(255,255,255,0.02)'
-            }}>
-              <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: '11px', lineHeight: 1.6, marginBottom: '8px' }}>
-                <span style={{ color: 'rgba(255, 255, 255, 0.5)', fontWeight: '600' }}>IPO:</span> Assumed 2027 at slider valuation
-                <span style={{ margin: '0 8px', opacity: 0.5 }}>•</span>
-                <span style={{ color: 'rgba(45, 212, 191, 0.7)', fontWeight: '600' }}>Base:</span> {BASE_GROWTH}% CAGR (S&P 500 historical)
-                <span style={{ margin: '0 8px', opacity: 0.5 }}>•</span>
-                <span style={{ color: 'rgba(46, 204, 113, 0.7)', fontWeight: '600' }}>Bull:</span> {BULL_GROWTH}% CAGR (Quantinuum since merger)
-              </p>
-              <p style={{ color: 'rgba(255,255,255,0.25)', fontSize: '11px', lineHeight: 1.6 }}>
-                Estimates only. Share price depends on market conditions, final share count, and underwriter pricing. Consult your equity agreement and a financial advisor.
-              </p>
-            </div>
           </div>
         </div>
       );
