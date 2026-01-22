@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Quantinuum RSU Calculator</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/recharts@2.10.3/umd/Recharts.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{min-height:100vh;background:#030306;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#fff;overflow-x:hidden}
+@keyframes float{0%,100%{transform:translate(0,0)}33%{transform:translate(20px,-20px)}66%{transform:translate(-15px,10px)}}
+@keyframes pulse{0%,100%{opacity:.5;transform:scale(1)}50%{opacity:1;transform:scale(1.05)}}
+input[type="range"]{-webkit-appearance:none;width:100%;height:6px;border-radius:6px;background:linear-gradient(90deg,rgba(45,212,191,.3) 0%,rgba(45,212,191,.1) 100%);cursor:pointer;outline:none}
+input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:24px;height:24px;border-radius:50%;background:linear-gradient(135deg,#2dd4bf 0%,#14b8a6 100%);cursor:pointer;box-shadow:0 0 0 4px rgba(45,212,191,.2),0 4px 16px rgba(45,212,191,.4);transition:all .2s ease}
+input[type="range"]::-webkit-slider-thumb:hover{transform:scale(1.1);box-shadow:0 0 0 6px rgba(45,212,191,.3),0 4px 24px rgba(45,212,191,.6)}
+input[type="range"]::-moz-range-thumb{width:24px;height:24px;border-radius:50%;background:linear-gradient(135deg,#2dd4bf 0%,#14b8a6 100%);cursor:pointer;border:none}
+.card{background:linear-gradient(165deg,rgba(255,255,255,.05) 0%,rgba(255,255,255,.02) 100%);backdrop-filter:blur(40px);border:1px solid rgba(255,255,255,.08);border-radius:24px}
+.card-inner{background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.05);border-radius:16px}
+.expand-btn{background:none;border:none;cursor:pointer;display:flex;align-items:center;gap:10px;padding:12px 0;font-size:14px;font-weight:500;color:rgba(255,255,255,.5);transition:all .3s ease}
+.expand-btn:hover{color:#2dd4bf}
+.year-chip{padding:10px 16px;border-radius:12px;font-size:14px;font-weight:600;cursor:pointer;transition:all .25s ease;border:1px solid transparent}
+.year-chip.off{background:rgba(255,255,255,.04);color:rgba(255,255,255,.4);border-color:rgba(255,255,255,.08)}
+.year-chip.off:hover{background:rgba(45,212,191,.1);border-color:rgba(45,212,191,.3);color:rgba(255,255,255,.8)}
+.year-chip.on{background:rgba(45,212,191,.2);color:#2dd4bf;border-color:rgba(45,212,191,.5)}
+.stat-box{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:16px;padding:16px;text-align:center}
+.stat-box.highlight{background:rgba(45,212,191,.08);border-color:rgba(45,212,191,.25)}
+.tab-btn{padding:12px 20px;background:transparent;border:1px solid transparent;border-radius:12px;color:rgba(255,255,255,.4);font-size:14px;font-weight:500;cursor:pointer;transition:all .2s ease;white-space:nowrap}
+.tab-btn:hover{color:rgba(255,255,255,.7)}
+.tab-btn.active{color:#2dd4bf;background:rgba(45,212,191,.1);border-color:rgba(45,212,191,.3)}
+@media(max-width:640px){.card{border-radius:20px}.stat-box{padding:14px 12px;border-radius:14px}.tab-btn{padding:10px 14px;font-size:13px}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useMemo, useRef, useEffect } = React;
+const { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, ComposedChart, Line } = Recharts;
+
+function EditableNumber({ value, onChange, formatDisplay, prefix, suffix, min, max, step = 1, fontSize = '36px', mobileFontSize = '28px' }) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [inputValue, setInputValue] = useState('');
+  const inputRef = useRef(null);
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [isEditing]);
+  const handleClick = () => {
+    setInputValue(String(value));
+    setIsEditing(true);
+  };
+  const commitValue = () => {
+    let newValue = parseFloat(inputValue.replace(/,/g, ''));
+    if (!isNaN(newValue)) {
+      newValue = Math.max(min, Math.min(max, newValue));
+      if (step >= 1) newValue = Math.round(newValue / step) * step;
+      onChange(newValue);
+    }
+    setIsEditing(false);
+  };
+  const responsiveFontSize = `clamp(${mobileFontSize}, 5vw, ${fontSize})`;
+  if (isEditing) {
+    return (
+      <span style={{ display: 'inline-flex', alignItems: 'baseline', flexWrap: 'wrap', gap: '4px' }}>
+        {prefix && <span style={{ fontSize: responsiveFontSize, fontWeight: '300', color: '#2dd4bf' }}>{prefix}</span>}
+        <input
+          ref={inputRef}
+          type="text"
+          inputMode="decimal"
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          onBlur={commitValue}
+          onKeyDown={(e) => { if (e.key === 'Enter') commitValue(); else if (e.key === 'Escape') setIsEditing(false); }}
+          style={{
+            fontSize: responsiveFontSize, fontWeight: '600', color: 'white',
+            background: 'rgba(45, 212, 191, 0.15)', border: '2px solid rgba(45, 212, 191, 0.6)',
+            borderRadius: '12px', padding: '8px 12px', width: `${Math.max(inputValue.length, 3) + 2}ch`,
+            maxWidth: '100%', outline: 'none', fontFamily: 'inherit',
+          }}
+        />
+        {suffix && <span style={{ fontSize: '13px', color: 'rgba(45, 212, 191, 0.8)', fontWeight: '500' }}>{suffix}</span>}
+      </span>
+    );
+  }
+  return (
+    <span onClick={handleClick} style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'baseline', flexWrap: 'wrap', gap: '6px', padding: '6px 10px', margin: '-6px -10px', borderRadius: '12px', transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)' }}
+      onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(45, 212, 191, 0.1)'}
+      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'} title="Tap to edit">
+      {prefix && <span style={{ fontSize: responsiveFontSize, fontWeight: '300', color: '#2dd4bf' }}>{prefix}</span>}
+      <span style={{ fontSize: responsiveFontSize, fontWeight: '600', color: 'white', lineHeight: 1.1, letterSpacing: '-0.02em' }}>
+        {formatDisplay ? formatDisplay(value) : value}
+      </span>
+      {suffix && <span style={{ fontSize: '13px', color: 'rgba(45, 212, 191, 0.8)', fontWeight: '500' }}>{suffix}</span>}
+    </span>
+  );
+}
+
+function useWindowSize() {
+  const [size, setSize] = useState({ width: typeof window !== 'undefined' ? window.innerWidth : 1200 });
+  useEffect(() => {
+    const handleResize = () => setSize({ width: window.innerWidth });
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+  return size;
+}
+
+function RSUCalculator() {
+  const { width } = useWindowSize();
+  const isMobile = width < 640;
+  const isTablet = width < 900;
+
+  const [rsuAmount, setRsuAmount] = useState(1000);
+  const [ipoValuation, setIpoValuation] = useState(17.5);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showHistoricalGrants, setShowHistoricalGrants] = useState(false);
+  const [totalShares, setTotalShares] = useState(450);
+  const [yearsWorked, setYearsWorked] = useState(5);
+  const [startYear, setStartYear] = useState(2022);
+  const [activeTab, setActiveTab] = useState('scenarios');
+
+  const [historicalGrants, setHistoricalGrants] = useState({2020:null,2021:null,2022:null,2023:null,2024:null,2025:null,2026:null});
+  const [enabledYears, setEnabledYears] = useState({2020:false,2021:false,2022:false,2023:false,2024:false,2025:false,2026:false});
+
+  const BASE_GROWTH = 10;
+  const BULL_GROWTH = 60;
+  const availableYears = [2020, 2021, 2022, 2023, 2024, 2025, 2026];
+
+  const getGrantForYear = (year) => (enabledYears[year] && historicalGrants[year] !== null) ? historicalGrants[year] : rsuAmount;
+  const pricePerShare = useMemo(() => (ipoValuation * 1000) / totalShares, [ipoValuation, totalShares]);
+
+  const scenarioData = useMemo(() => {
+    const data = [];
+    const IPO_YEAR = 2027;
+    for (let i = 0; i < yearsWorked; i++) {
+      const calendarYear = startYear + i;
+      let vested = 0;
+      for (let g = 0; g <= i; g++) {
+        const grantAmount = getGrantForYear(startYear + g);
+        const vestingYears = Math.min(i - g + 1, 4);
+        vested += vestingYears * (grantAmount / 4);
+      }
+      const yearsOfGrowth = calendarYear >= IPO_YEAR ? calendarYear - IPO_YEAR : 0;
+      const baseMultiplier = Math.pow(1 + BASE_GROWTH / 100, yearsOfGrowth);
+      const bullMultiplier = Math.pow(1 + BULL_GROWTH / 100, yearsOfGrowth);
+      data.push({
+        year: "'" + String(calendarYear).slice(2), fullYear: calendarYear, yearIndex: i,
+        vested: Math.round(vested), base: vested * pricePerShare * baseMultiplier,
+        bull: vested * pricePerShare * bullMultiplier,
+        baseValuation: ipoValuation * baseMultiplier, bullValuation: ipoValuation * bullMultiplier,
+      });
+    }
+    return data;
+  }, [rsuAmount, yearsWorked, startYear, pricePerShare, ipoValuation, historicalGrants, enabledYears]);
+
+  const finalScenarioValues = useMemo(() => {
+    const last = scenarioData[scenarioData.length - 1];
+    return { base: last?.base || 0, bull: last?.bull || 0, vested: last?.vested || 0,
+      baseValuation: last?.baseValuation || ipoValuation, bullValuation: last?.bullValuation || ipoValuation };
+  }, [scenarioData, ipoValuation]);
+
+  const toggleYear = (year) => {
+    setEnabledYears(prev => ({ ...prev, [year]: !prev[year] }));
+    if (!enabledYears[year] && historicalGrants[year] === null) setHistoricalGrants(prev => ({ ...prev, [year]: rsuAmount }));
+  };
+  const updateHistoricalGrant = (year, value) => setHistoricalGrants(prev => ({ ...prev, [year]: value }));
+
+  const formatCurrency = (value) => {
+    if (value >= 1000000) return '$' + (value / 1000000).toFixed(2) + 'M';
+    if (value >= 1000) return '$' + (value / 1000).toFixed(0) + 'K';
+    return '$' + value.toLocaleString('en-US', { maximumFractionDigits: 0 });
+  };
+  const formatNumber = (value) => value.toLocaleString('en-US', { maximumFractionDigits: 0 });
+
+  const sliderToValue = (sliderVal) => {
+    if (sliderVal <= 200) return sliderVal * 10;
+    if (sliderVal <= 320) return 2000 + (sliderVal - 200) * 25;
+    if (sliderVal <= 370) return 5000 + (sliderVal - 320) * 100;
+    return 10000 + (sliderVal - 370) * 1000;
+  };
+  const valueToSlider = (val) => {
+    if (val <= 2000) return val / 10;
+    if (val <= 5000) return 200 + (val - 2000) / 25;
+    if (val <= 10000) return 320 + (val - 5000) / 100;
+    return 370 + (val - 10000) / 1000;
+  };
+
+  const ScenarioTooltip = ({ active, payload }) => {
+    if (active && payload?.length) {
+      const data = payload[0].payload;
+      return (
+        <div style={{ background: 'rgba(0,0,0,0.95)', backdropFilter: 'blur(20px)', border: '1px solid rgba(45,212,191,0.4)', borderRadius: '16px', padding: '16px 20px', boxShadow: '0 20px 40px rgba(0,0,0,0.5)', minWidth: '200px' }}>
+          <div style={{ color: '#2dd4bf', fontSize: '14px', marginBottom: '12px', fontWeight: '600' }}>{data.fullYear}</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ color: '#2ecc71', fontSize: '12px' }}>Bull ({BULL_GROWTH}% CAGR)</span>
+                <span style={{ color: '#fff', fontWeight: '600' }}>{formatCurrency(data.bull)}</span>
+              </div>
+              <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '11px' }}>${data.bullValuation.toFixed(1)}B valuation</div>
+            </div>
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ color: '#2dd4bf', fontSize: '12px' }}>Base ({BASE_GROWTH}% CAGR)</span>
+                <span style={{ color: '#fff', fontWeight: '600' }}>{formatCurrency(data.base)}</span>
+              </div>
+              <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '11px' }}>${data.baseValuation.toFixed(1)}B valuation</div>
+            </div>
+          </div>
+          <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', marginTop: '12px', paddingTop: '8px', color: 'rgba(255,255,255,0.4)', fontSize: '11px' }}>
+            {formatNumber(data.vested)} shares vested
+          </div>
+        </div>
+      );
+    }
+    return null;
+  };
+
+  return (
+    <div style={{ minHeight: '100vh', background: '#030306', position: 'relative', overflow: 'hidden', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' }}>
+      <div style={{ position: 'absolute', top: '-10%', left: '-20%', width: '80vw', height: '80vw', maxWidth: '800px', maxHeight: '800px', background: 'radial-gradient(circle, rgba(45,212,191,0.12) 0%, transparent 50%)', filter: 'blur(80px)', pointerEvents: 'none', animation: 'float 30s ease-in-out infinite' }} />
+      <div style={{ position: 'absolute', bottom: '0', right: '-10%', width: '60vw', height: '60vw', maxWidth: '600px', maxHeight: '600px', background: 'radial-gradient(circle, rgba(20,184,166,0.1) 0%, transparent 50%)', filter: 'blur(100px)', pointerEvents: 'none', animation: 'float 25s ease-in-out infinite reverse' }} />
+
+      <div style={{ position: 'relative', padding: isMobile ? '24px 16px' : '48px 24px', maxWidth: '920px', margin: '0 auto' }}>
+        {/* Header */}
+        <div style={{ textAlign: 'center', marginBottom: isMobile ? '32px' : '48px' }}>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '10px', padding: '6px 16px', background: 'rgba(45,212,191,0.1)', borderRadius: '100px', marginBottom: '20px', border: '1px solid rgba(45,212,191,0.25)' }}>
+            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#2dd4bf', boxShadow: '0 0 12px #2dd4bf', animation: 'pulse 2s ease-in-out infinite' }} />
+            <span style={{ color: '#2dd4bf', fontSize: '11px', fontWeight: '700', letterSpacing: '0.15em', textTransform: 'uppercase' }}>Equity Calculator</span>
+          </div>
+          <h1 style={{ fontSize: isMobile ? '32px' : '44px', fontWeight: '700', color: 'white', marginBottom: '12px', letterSpacing: '-0.03em', lineHeight: 1.1 }}>
+            <span style={{ color: '#2dd4bf', textShadow: '0 0 60px rgba(45,212,191,0.5)' }}>Quantinuum</span>
+            {isMobile && <br />}
+            <span style={{ color: 'rgba(255,255,255,0.95)' }}> RSU Value</span>
+          </h1>
+          <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px' }}>Model your equity across IPO scenarios</p>
+        </div>
+
+        {/* Main Controls */}
+        <div className="card" style={{ padding: isMobile ? '24px 20px' : '36px', marginBottom: '20px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isTablet ? '1fr' : '1fr 1fr', gap: isTablet ? '32px' : '40px' }}>
+            <div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'rgba(255,255,255,0.5)', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '16px' }}>
+                <div style={{ width: '3px', height: '12px', borderRadius: '2px', background: '#2dd4bf' }} />Annual RSU Grant
+              </label>
+              <div style={{ marginBottom: '20px' }}>
+                <EditableNumber value={rsuAmount} onChange={setRsuAmount} formatDisplay={formatNumber} suffix="shares/yr" min={0} max={10000000} step={1} />
+              </div>
+              <input type="range" min="0" max="460" step="1" value={valueToSlider(rsuAmount)} onChange={(e) => setRsuAmount(sliderToValue(Number(e.target.value)))} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'rgba(255,255,255,0.25)', marginTop: '10px' }}><span>0</span><span>100K</span></div>
+            </div>
+            <div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'rgba(255,255,255,0.5)', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '16px' }}>
+                <div style={{ width: '3px', height: '12px', borderRadius: '2px', background: '#2dd4bf' }} />IPO Valuation
+              </label>
+              <div style={{ marginBottom: '20px' }}>
+                <EditableNumber value={ipoValuation} onChange={setIpoValuation} formatDisplay={(v) => v.toFixed(1)} prefix="$" suffix="billion" min={5} max={250} step={0.5} />
+              </div>
+              <input type="range" min="5" max="250" step="0.5" value={ipoValuation} onChange={(e) => setIpoValuation(Number(e.target.value))} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'rgba(255,255,255,0.25)', marginTop: '10px' }}><span>$5B</span><span>$250B</span></div>
+            </div>
+          </div>
+
+          <div style={{ marginTop: '28px', padding: '14px 20px', background: 'rgba(45,212,191,0.06)', borderRadius: '14px', border: '1px solid rgba(45,212,191,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: '8px' }}>
+            <span style={{ color: 'rgba(255,255,255,0.45)', fontSize: '13px' }}>Share price:</span>
+            <span style={{ color: '#2dd4bf', fontWeight: '700', fontSize: '17px' }}>${pricePerShare.toFixed(2)}</span>
+            <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: '11px' }}>({ipoValuation}B ÷ {totalShares}M)</span>
+          </div>
+
+          <button className="expand-btn" onClick={() => setShowAdvanced(!showAdvanced)} style={{ marginTop: '20px' }}>
+            <span style={{ width: '28px', height: '28px', borderRadius: '8px', background: 'rgba(45,212,191,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', fontWeight: '300', color: '#2dd4bf' }}>{showAdvanced ? '−' : '+'}</span>
+            Advanced Settings
+          </button>
+
+          {showAdvanced && (
+            <div className="card-inner" style={{ marginTop: '12px', padding: isMobile ? '20px 16px' : '24px' }}>
+              <div style={{ marginBottom: '28px' }}>
+                <label style={{ display: 'block', color: 'rgba(255,255,255,0.5)', fontSize: '11px', fontWeight: '600', marginBottom: '14px', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Total Shares Outstanding</label>
+                <div style={{ marginBottom: '14px' }}>
+                  <EditableNumber value={totalShares} onChange={setTotalShares} formatDisplay={(v) => v.toString()} suffix="million" min={250} max={1000} step={10} fontSize="26px" mobileFontSize="22px" />
+                </div>
+                <input type="range" min="250" max="1000" step="10" value={totalShares} onChange={(e) => setTotalShares(Number(e.target.value))} />
+                <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)', marginTop: '10px' }}>Actual count in S-1 filing.</p>
+              </div>
+              <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '20px' }}>
+                <button className="expand-btn" onClick={() => setShowHistoricalGrants(!showHistoricalGrants)} style={{ padding: 0, marginBottom: showHistoricalGrants ? '16px' : 0 }}>
+                  <span style={{ width: '28px', height: '28px', borderRadius: '8px', background: 'rgba(45,212,191,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', fontWeight: '300', color: '#2dd4bf' }}>{showHistoricalGrants ? '−' : '+'}</span>
+                  Customize Past Grants
+                </button>
+                {showHistoricalGrants && (
+                  <div>
+                    <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)', marginBottom: '16px', lineHeight: 1.5 }}>
+                      Tap years to customize. Others use default: <span style={{ color: '#2dd4bf', fontWeight: '600' }}>{formatNumber(rsuAmount)}</span>
+                    </p>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '20px' }}>
+                      {availableYears.map(year => (
+                        <button key={year} className={`year-chip ${enabledYears[year] ? 'on' : 'off'}`} onClick={() => toggleYear(year)}>{year}</button>
+                      ))}
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      {availableYears.filter(year => enabledYears[year]).map(year => (
+                        <div key={year} style={{ padding: '16px', background: 'rgba(45,212,191,0.05)', borderRadius: '12px', border: '1px solid rgba(45,212,191,0.15)' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                            <span style={{ color: '#2dd4bf', fontSize: '14px', fontWeight: '600' }}>{year}</span>
+                            <EditableNumber value={historicalGrants[year] || rsuAmount} onChange={(v) => updateHistoricalGrant(year, v)} formatDisplay={(v) => formatNumber(v)} suffix="shares" min={0} max={10000000} step={1} fontSize="16px" mobileFontSize="15px" />
+                          </div>
+                          <input type="range" min="0" max="460" step="1" value={valueToSlider(historicalGrants[year] || rsuAmount)} onChange={(e) => updateHistoricalGrant(year, sliderToValue(Number(e.target.value)))} />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Scenario Summary Cards */}
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)', gap: '16px', marginBottom: '20px' }}>
+          <div style={{ background: 'linear-gradient(165deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%)', backdropFilter: 'blur(40px)', border: '1px solid rgba(45,212,191,0.25)', borderRadius: '20px', padding: isMobile ? '20px' : '24px', position: 'relative', overflow: 'hidden' }}>
+            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '3px', background: 'linear-gradient(90deg, #2dd4bf, #14b8a6)' }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#2dd4bf', boxShadow: '0 0 8px #2dd4bf' }} />
+              <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Base Case</span>
+            </div>
+            <div style={{ fontSize: isMobile ? '32px' : '40px', fontWeight: '700', color: '#fff', letterSpacing: '-0.03em', marginBottom: '8px' }}>{formatCurrency(finalScenarioValues.base)}</div>
+            <div style={{ color: '#2dd4bf', fontSize: '13px', fontWeight: '600' }}>{BASE_GROWTH}% Annual Growth</div>
+            <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '12px', marginTop: '4px' }}>S&P 500 Historical CAGR</div>
+            <div style={{ color: 'rgba(255,255,255,0.25)', fontSize: '11px', marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>{startYear + yearsWorked - 1} valuation: ${finalScenarioValues.baseValuation.toFixed(1)}B</div>
+          </div>
+          <div style={{ background: 'linear-gradient(165deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%)', backdropFilter: 'blur(40px)', border: '1px solid rgba(46,204,113,0.25)', borderRadius: '20px', padding: isMobile ? '20px' : '24px', position: 'relative', overflow: 'hidden' }}>
+            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '3px', background: 'linear-gradient(90deg, #2ecc71, #27ae60)' }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#2ecc71', boxShadow: '0 0 8px #2ecc71' }} />
+              <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Bull Case</span>
+            </div>
+            <div style={{ fontSize: isMobile ? '32px' : '40px', fontWeight: '700', color: '#fff', letterSpacing: '-0.03em', marginBottom: '8px' }}>{formatCurrency(finalScenarioValues.bull)}</div>
+            <div style={{ color: '#2ecc71', fontSize: '13px', fontWeight: '600' }}>{BULL_GROWTH}% Annual Growth</div>
+            <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '12px', marginTop: '4px' }}>Quantinuum CAGR Since Merger</div>
+            <div style={{ color: 'rgba(255,255,255,0.25)', fontSize: '11px', marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>{startYear + yearsWorked - 1} valuation: ${finalScenarioValues.bullValuation.toFixed(1)}B</div>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', overflowX: 'auto', paddingBottom: '4px' }}>
+          <button className={`tab-btn ${activeTab === 'scenarios' ? 'active' : ''}`} onClick={() => setActiveTab('scenarios')}>Growth Scenarios</button>
+          <button className={`tab-btn ${activeTab === 'timeline' ? 'active' : ''}`} onClick={() => setActiveTab('timeline')}>Vesting Timeline</button>
+        </div>
+
+        {activeTab === 'scenarios' && (
+          <div className="card" style={{ padding: isMobile ? '24px 20px' : '36px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isTablet ? '1fr' : '1fr 1fr', gap: '12px', marginBottom: '28px' }}>
+              <div className="card-inner" style={{ padding: isMobile ? '18px 16px' : '20px' }}>
+                <label style={{ display: 'block', color: 'rgba(255,255,255,0.45)', fontSize: '10px', fontWeight: '600', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Start Year</label>
+                <div style={{ marginBottom: '10px' }}>
+                  <EditableNumber value={startYear} onChange={setStartYear} formatDisplay={(v) => v.toString()} min={2020} max={2026} step={1} fontSize="24px" mobileFontSize="22px" />
+                </div>
+                <input type="range" min="2020" max="2026" step="1" value={startYear} onChange={(e) => setStartYear(Number(e.target.value))} />
+              </div>
+              <div className="card-inner" style={{ padding: isMobile ? '18px 16px' : '20px' }}>
+                <label style={{ display: 'block', color: 'rgba(255,255,255,0.45)', fontSize: '10px', fontWeight: '600', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Years at Company</label>
+                <div style={{ marginBottom: '10px' }}>
+                  <EditableNumber value={yearsWorked} onChange={setYearsWorked} formatDisplay={(v) => v.toString()} suffix="yrs" min={1} max={20} step={1} fontSize="24px" mobileFontSize="22px" />
+                </div>
+                <input type="range" min="1" max="20" step="1" value={yearsWorked} onChange={(e) => setYearsWorked(Number(e.target.value))} />
+              </div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
+              <div>
+                <h2 style={{ fontSize: '18px', fontWeight: '600', color: 'white', marginBottom: '4px' }}>{yearsWorked}-Year Growth Projection</h2>
+                <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>${ipoValuation}B through 2026, growth starts 2027</p>
+              </div>
+              <div style={{ display: 'flex', gap: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <div style={{ width: '12px', height: '3px', background: '#2dd4bf', borderRadius: '2px' }} />
+                  <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: '11px' }}>Base {BASE_GROWTH}%</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <div style={{ width: '12px', height: '3px', background: '#2ecc71', borderRadius: '2px' }} />
+                  <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: '11px' }}>Bull {BULL_GROWTH}%</span>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ height: isMobile ? '260px' : '320px', marginBottom: '24px' }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={scenarioData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="baseGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#2dd4bf" stopOpacity={0.3} />
+                      <stop offset="100%" stopColor="#2dd4bf" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="bullGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#2ecc71" stopOpacity={0.3} />
+                      <stop offset="100%" stopColor="#2ecc71" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
+                  <XAxis dataKey="year" axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.35)', fontSize: 11 }} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.35)', fontSize: 11 }} tickFormatter={(v) => v >= 1e6 ? `$${(v/1e6).toFixed(0)}M` : `$${(v/1e3).toFixed(0)}K`} width={55} />
+                  <Tooltip content={<ScenarioTooltip />} />
+                  <Area type="monotone" dataKey="bull" stroke="transparent" fill="url(#bullGrad)" />
+                  <Area type="monotone" dataKey="base" stroke="transparent" fill="url(#baseGrad)" />
+                  <Line type="monotone" dataKey="bull" stroke="#2ecc71" strokeWidth={2.5} dot={false} />
+                  <Line type="monotone" dataKey="base" stroke="#2dd4bf" strokeWidth={2.5} dot={false} />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div style={{ padding: '20px', background: 'rgba(0,0,0,0.3)', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.05)' }}>
+              <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px', marginBottom: '16px', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: '600' }}>{startYear + yearsWorked - 1} Outcomes</div>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', background: 'rgba(45,212,191,0.1)', borderRadius: '12px', border: '1px solid rgba(45,212,191,0.25)' }}>
+                  <div><div style={{ color: '#2dd4bf', fontSize: '12px', fontWeight: '600' }}>Base Case</div><div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '11px' }}>{BASE_GROWTH}% CAGR</div></div>
+                  <div style={{ color: '#fff', fontSize: '22px', fontWeight: '700' }}>{formatCurrency(finalScenarioValues.base)}</div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', background: 'rgba(46,204,113,0.1)', borderRadius: '12px', border: '1px solid rgba(46,204,113,0.25)' }}>
+                  <div><div style={{ color: '#2ecc71', fontSize: '12px', fontWeight: '600' }}>Bull Case</div><div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '11px' }}>{BULL_GROWTH}% CAGR</div></div>
+                  <div style={{ color: '#fff', fontSize: '22px', fontWeight: '700' }}>{formatCurrency(finalScenarioValues.bull)}</div>
+                </div>
+              </div>
+              <div style={{ marginTop: '16px', color: 'rgba(255,255,255,0.4)', fontSize: '12px', textAlign: 'center' }}>
+                Bull case is <span style={{ color: '#2ecc71', fontWeight: '700' }}>{((finalScenarioValues.bull / finalScenarioValues.base - 1) * 100).toFixed(0)}%</span> higher than base case by {startYear + yearsWorked - 1}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'timeline' && (
+          <div className="card" style={{ padding: isMobile ? '24px 20px' : '36px' }}>
+            <div style={{ marginBottom: '24px' }}>
+              <h2 style={{ fontSize: '18px', fontWeight: '600', color: 'white', marginBottom: '4px' }}>Vesting Timeline</h2>
+              <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>{formatNumber(rsuAmount)} shares granted annually, 25% vesting per year</p>
+            </div>
+            {(() => {
+              const lastYear = scenarioData[scenarioData.length - 1];
+              const totalGranted = yearsWorked * rsuAmount;
+              const totalVested = lastYear?.vested || 0;
+              const totalUnvested = totalGranted - totalVested;
+              return (
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: '12px', marginBottom: '24px' }}>
+                  <div className="stat-box"><p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '6px', fontWeight: '600' }}>Granted</p><p style={{ color: 'white', fontWeight: '600', fontSize: isMobile ? '18px' : '20px' }}>{formatNumber(totalGranted)}</p></div>
+                  <div className="stat-box"><p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '6px', fontWeight: '600' }}>Vested</p><p style={{ color: 'white', fontWeight: '600', fontSize: isMobile ? '18px' : '20px' }}>{formatNumber(totalVested)}</p></div>
+                  <div className="stat-box"><p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '6px', fontWeight: '600' }}>Unvested</p><p style={{ color: '#f87171', fontWeight: '600', fontSize: isMobile ? '18px' : '20px' }}>{formatNumber(totalUnvested)}</p></div>
+                  <div className="stat-box highlight"><p style={{ color: 'rgba(45,212,191,0.8)', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '6px', fontWeight: '600' }}>Base Value</p><p style={{ color: '#2dd4bf', fontWeight: '700', fontSize: isMobile ? '18px' : '20px' }}>{formatCurrency(lastYear?.base || 0)}</p></div>
+                </div>
+              );
+            })()}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {scenarioData.map((year, i) => {
+                const prevVested = i > 0 ? scenarioData[i-1].vested : 0;
+                const newlyVested = year.vested - prevVested;
+                const totalGrantedSoFar = (i + 1) * rsuAmount;
+                const percentVested = (year.vested / totalGrantedSoFar) * 100;
+                return (
+                  <div key={i} style={{ display: 'flex', alignItems: 'stretch', gap: '16px', padding: '18px 20px', background: 'rgba(255,255,255,0.02)', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                    <div style={{ width: '56px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <div style={{ color: '#2dd4bf', fontSize: '18px', fontWeight: '700' }}>{year.fullYear}</div>
+                      <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '10px' }}>Year {i + 1}</div>
+                    </div>
+                    <div style={{ width: '1px', background: 'rgba(255,255,255,0.08)', flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                        <div><span style={{ color: '#2ecc71', fontSize: '15px', fontWeight: '600' }}>+{formatNumber(newlyVested)}</span><span style={{ color: 'rgba(255,255,255,0.35)', fontSize: '12px' }}> vesting</span></div>
+                        <div style={{ textAlign: 'right' }}><div style={{ color: '#2dd4bf', fontSize: '14px', fontWeight: '600' }}>{formatCurrency(year.base)}</div><div style={{ color: '#2ecc71', fontSize: '12px' }}>{formatCurrency(year.bull)} bull</div></div>
+                      </div>
+                      <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                        <div style={{ flex: 1, height: '6px', background: 'rgba(255,255,255,0.06)', borderRadius: '3px', overflow: 'hidden' }}>
+                          <div style={{ width: `${percentVested}%`, height: '100%', background: 'linear-gradient(90deg, #2dd4bf, #2ecc71)', borderRadius: '3px', transition: 'width 0.3s ease', boxShadow: '0 0 12px rgba(45,212,191,0.4)' }} />
+                        </div>
+                        <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px', width: '36px', flexShrink: 0 }}>{percentVested.toFixed(0)}%</span>
+                      </div>
+                      <div style={{ display: 'flex', gap: '16px', marginTop: '10px', flexWrap: 'wrap' }}>
+                        <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px' }}>Vested: <span style={{ color: 'white', fontWeight: '500' }}>{formatNumber(year.vested)}</span></span>
+                        <span style={{ color: '#f87171', fontSize: '11px' }}>Unvested: {formatNumber(totalGrantedSoFar - year.vested)}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Disclaimer */}
+        <div style={{ marginTop: '20px', padding: '16px 20px', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.05)', background: 'rgba(255,255,255,0.02)' }}>
+          <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: '11px', lineHeight: 1.6, marginBottom: '8px' }}>
+            <span style={{ color: 'rgba(255,255,255,0.5)', fontWeight: '600' }}>IPO:</span> Assumed 2027 at slider valuation
+            <span style={{ margin: '0 8px', opacity: 0.5 }}>•</span>
+            <span style={{ color: 'rgba(45,212,191,0.7)', fontWeight: '600' }}>Base:</span> {BASE_GROWTH}% CAGR (S&P 500 historical)
+            <span style={{ margin: '0 8px', opacity: 0.5 }}>•</span>
+            <span style={{ color: 'rgba(46,204,113,0.7)', fontWeight: '600' }}>Bull:</span> {BULL_GROWTH}% CAGR (Quantinuum since merger)
+          </p>
+          <p style={{ color: 'rgba(255,255,255,0.25)', fontSize: '11px', lineHeight: 1.6 }}>
+            Estimates only. Share price depends on market conditions, final share count, and underwriter pricing. Consult your equity agreement and a financial advisor.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<RSUCalculator />);
+</script>
+</body>
+</html>
