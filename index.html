@@ -204,7 +204,7 @@
     const { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, ComposedChart, Line } = Recharts;
 
     // Editable number component
-    function EditableNumber({ value, onChange, formatDisplay, prefix, suffix, min, max, step = 1, fontSize = '36px', mobileFontSize = '28px', color = '#2dd4bf' }) {
+    function EditableNumber({ value, onChange, formatDisplay, prefix, suffix, min, max, step = 1, fontSize = '36px', mobileFontSize = '28px', color = '#2dd4bf', freeInput = false }) {
       const [isEditing, setIsEditing] = useState(false);
       const [inputValue, setInputValue] = useState('');
       const inputRef = useRef(null);
@@ -232,7 +232,8 @@
         let newValue = parseFloat(inputValue.replace(/,/g, ''));
         if (!isNaN(newValue)) {
           newValue = Math.max(min, Math.min(max, newValue));
-          if (step >= 1) newValue = Math.round(newValue / step) * step;
+          // Only round to step if freeInput is false
+          if (!freeInput && step >= 1) newValue = Math.round(newValue / step) * step;
           onChange(newValue);
         }
         setIsEditing(false);
@@ -332,9 +333,9 @@
       const isTablet = width < 900;
       
       const [rsuAmount, setRsuAmount] = useState(1000);
-      const [ipoValuation, setIpoValuation] = useState(17.5);
+      const [ipoValuation, setIpoValuation] = useState(20);
       const [showAdvanced, setShowAdvanced] = useState(false);
-      const [totalShares, setTotalShares] = useState(450);
+      const [totalShares, setTotalShares] = useState(410);
       const [yearsWorked, setYearsWorked] = useState(8);
       const [startYear, setStartYear] = useState(2023);
       const [activeTab, setActiveTab] = useState('scenarios');
@@ -769,7 +770,7 @@
                       Total Shares Outstanding
                     </label>
                     <div style={{ marginBottom: '14px' }}>
-                      <EditableNumber value={totalShares} onChange={setTotalShares} formatDisplay={(v) => v.toString()} suffix="million" min={250} max={1000} step={10} fontSize="26px" mobileFontSize="22px" />
+                      <EditableNumber value={totalShares} onChange={setTotalShares} formatDisplay={(v) => v.toString()} suffix="million" min={250} max={1000} step={10} fontSize="26px" mobileFontSize="22px" freeInput={true} />
                     </div>
                     <input type="range" min="250" max="1000" step="10" value={totalShares} onChange={(e) => setTotalShares(Number(e.target.value))} />
                     <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)', marginTop: '10px' }}>Actual count in S-1 filing.</p>
