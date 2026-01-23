@@ -317,15 +317,16 @@
       const BASE_GROWTH = 10;
       const BULL_GROWTH = 60;
 
-      const getGrantForYear = (year) => {
-        if (enabledYears[year] && historicalGrants[year] !== null) return historicalGrants[year];
-        return rsuAmount;
-      };
-
       const pricePerShare = useMemo(() => (ipoValuation * 1000) / totalShares, [ipoValuation, totalShares]);
 
       // Scenario projection data (base vs bull)
+      // Grants assumed issued in December, so vesting starts the following year
       const scenarioData = useMemo(() => {
+        const getGrantForYear = (year) => {
+          if (enabledYears[year] && historicalGrants[year] !== null) return historicalGrants[year];
+          return rsuAmount;
+        };
+        
         const data = [];
         const IPO_YEAR = 2027;
         let cumulativeGranted = 0;
@@ -335,11 +336,12 @@
           const grantThisYear = getGrantForYear(calendarYear);
           cumulativeGranted += grantThisYear;
           
+          // Vesting calculation: grants issued in December of year g start vesting in year g+1
           let vested = 0;
-          for (let g = 0; g <= i; g++) {
+          for (let g = 0; g < i; g++) {
             const grantCalendarYear = startYear + g;
             const grantAmount = getGrantForYear(grantCalendarYear);
-            const vestingYears = Math.min(i - g + 1, 4);
+            const vestingYears = Math.min(i - g, 4); // Years since grant was issued
             vested += vestingYears * (grantAmount / 4);
           }
           
@@ -409,10 +411,14 @@
       }, [rsuAmount, pricePerShare, scenarioData, startYear, yearsWorked, finalScenarioValues]);
 
       const toggleYear = (year) => {
-        setEnabledYears(prev => ({ ...prev, [year]: !prev[year] }));
-        if (!enabledYears[year] && historicalGrants[year] === null) {
-          setHistoricalGrants(prev => ({ ...prev, [year]: rsuAmount }));
-        }
+        setEnabledYears(prev => {
+          const newEnabled = !prev[year];
+          // If enabling and no custom grant set, initialize to default
+          if (newEnabled && historicalGrants[year] === null) {
+            setHistoricalGrants(prevGrants => ({ ...prevGrants, [year]: rsuAmount }));
+          }
+          return { ...prev, [year]: newEnabled };
+        });
       };
 
       const updateHistoricalGrant = (year, value) => setHistoricalGrants(prev => ({ ...prev, [year]: value }));
@@ -480,7 +486,12 @@
 
       const availableYears = [2020, 2021, 2022, 2023, 2024, 2025, 2026];
       
-      const getYearLabel = (year) => year === 2020 ? "Pre-merger RSUs" : year;
+      const getYearLabel = (year) => {
+        if (year === 2020) {
+          return startYear <= 2020 ? "Pre-merger RSUs*" : "Pre-merger RSUs";
+        }
+        return year;
+      };
 
       return (
         <div style={{ 
@@ -566,7 +577,7 @@
                 <span style={{ color: 'rgba(255,255,255,0.95)' }}> RSU Value</span>
               </h1>
               <p style={{ color: 'rgba(255, 255, 255, 0.4)', fontSize: '14px' }}>
-                Calculate The Eigenvalue of Your Equity
+                <span style={{ fontStyle: 'italic' }}>Calculate the Eigenvalue of Your Equity</span>
               </p>
             </div>
 
@@ -682,14 +693,13 @@
                   </div>
 
                   <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '20px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-                      <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: 'rgba(45, 212, 191, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', color: '#2dd4bf' }}>📅</div>
+                    <div style={{ marginBottom: '16px' }}>
                       <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: '14px', fontWeight: '500' }}>Customize Past Grants</span>
                     </div>
 
                     <div>
                       <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)', marginBottom: '16px', lineHeight: 1.5 }}>
-                        Tap years to customize. Others use default: <span style={{ color: '#2dd4bf', fontWeight: '600' }}>{formatNumber(rsuAmount)}</span>
+                        Tap years to customize. Other years use default: <span style={{ color: '#2dd4bf', fontWeight: '600' }}>{formatNumber(rsuAmount)}</span>
                       </p>
                       
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '20px' }}>
@@ -705,14 +715,14 @@
                           <div key={year} style={{ padding: '16px', background: 'rgba(45, 212, 191, 0.05)', borderRadius: '12px', border: '1px solid rgba(45, 212, 191, 0.15)' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
                               <span style={{ color: '#2dd4bf', fontSize: '14px', fontWeight: '600' }}>{getYearLabel(year)}</span>
-                              <EditableNumber value={historicalGrants[year] || rsuAmount} onChange={(v) => updateHistoricalGrant(year, v)} formatDisplay={(v) => `${formatNumber(v)}`} suffix="shares" min={0} max={10000000} step={1} fontSize="16px" mobileFontSize="15px" />
+                              <EditableNumber value={historicalGrants[year] !== null ? historicalGrants[year] : rsuAmount} onChange={(v) => updateHistoricalGrant(year, v)} formatDisplay={(v) => `${formatNumber(v)}`} suffix="shares" min={0} max={10000000} step={1} fontSize="16px" mobileFontSize="15px" />
                             </div>
                             <input
                               type="range"
                               min="0"
                               max="460"
                               step="1"
-                              value={valueToSlider(historicalGrants[year] || rsuAmount)}
+                              value={valueToSlider(historicalGrants[year] !== null ? historicalGrants[year] : rsuAmount)}
                               onChange={(e) => updateHistoricalGrant(year, sliderToValue(Number(e.target.value)))}
                             />
                           </div>
@@ -828,9 +838,14 @@
                       Start Year
                     </label>
                     <div style={{ marginBottom: '10px' }}>
-                      <EditableNumber value={startYear} onChange={setStartYear} formatDisplay={(v) => v.toString()} min={2021} max={2026} step={1} fontSize="24px" mobileFontSize="22px" />
+                      <EditableNumber value={startYear} onChange={setStartYear} formatDisplay={(v) => v <= 2020 ? '2020 or earlier' : v.toString()} min={2020} max={2026} step={1} fontSize="24px" mobileFontSize="22px" />
                     </div>
-                    <input type="range" min="2021" max="2026" step="1" value={startYear} onChange={(e) => setStartYear(Number(e.target.value))} />
+                    <input type="range" min="2020" max="2026" step="1" value={Math.max(2020, startYear)} onChange={(e) => setStartYear(Number(e.target.value))} />
+                    {startYear <= 2020 && (
+                      <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.35)', marginTop: '8px', fontStyle: 'italic' }}>
+                        * change pre-merger RSU # above in advanced settings
+                      </p>
+                    )}
                   </div>
 
                   <div className="card-inner" style={{ padding: isMobile ? '18px 16px' : '20px' }}>
@@ -961,7 +976,7 @@
                     Vesting Schedule
                   </h2>
                   <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>
-                    4-year vesting: 25% annually
+                    4-year vesting: 25% annually (grants issued in December)
                   </p>
                 </div>
 
