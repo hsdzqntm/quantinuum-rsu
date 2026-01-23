@@ -337,7 +337,7 @@
       const [showAdvanced, setShowAdvanced] = useState(false);
       const [totalShares, setTotalShares] = useState(410);
       const [yearsWorked, setYearsWorked] = useState(8);
-      const [startYear, setStartYear] = useState(2022);
+      const [startYear, setStartYear] = useState(2023);
       const [activeTab, setActiveTab] = useState('scenarios');
       const [taxRate, setTaxRate] = useState(40);
       const [copied, setCopied] = useState(false);
@@ -373,13 +373,21 @@
           const grantThisYear = getGrantForYear(calendarYear);
           cumulativeGranted += grantThisYear;
           
-          // Vesting calculation: grants issued in December of year g start vesting in year g+1
+          // Vesting calculation
           let vested = 0;
-          for (let g = 0; g < i; g++) {
+          for (let g = 0; g <= i; g++) {
             const grantCalendarYear = startYear + g;
             const grantAmount = getGrantForYear(grantCalendarYear);
-            const vestingYears = Math.min(i - g, 4); // Years since grant was issued
-            vested += vestingYears * (grantAmount / 4);
+            
+            if (grantCalendarYear <= 2020) {
+              // Pre-merger RSUs are 100% vested immediately
+              vested += grantAmount;
+            } else if (g < i) {
+              // Post-merger grants: issued in December, vest 25% annually starting next year
+              const vestingYears = Math.min(i - g, 4);
+              vested += vestingYears * (grantAmount / 4);
+            }
+            // If g === i and post-merger, grant was just issued in December, nothing vested yet
           }
           
           const yearsOfGrowth = calendarYear >= IPO_YEAR ? calendarYear - IPO_YEAR : 0;
@@ -830,7 +838,7 @@
                           <div key={year} style={{ padding: '16px', background: 'rgba(45, 212, 191, 0.05)', borderRadius: '12px', border: '1px solid rgba(45, 212, 191, 0.15)' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
                               <span style={{ color: '#2dd4bf', fontSize: '14px', fontWeight: '600' }}>{getYearLabel(year)}</span>
-                              <EditableNumber value={historicalGrants[year] !== null ? historicalGrants[year] : rsuAmount} onChange={(v) => updateHistoricalGrant(year, v)} formatDisplay={(v) => `${formatNumber(v)}`} suffix="shares" min={0} max={10000000} step={1} fontSize="16px" mobileFontSize="15px" />
+                              <EditableNumber value={historicalGrants[year] !== null ? historicalGrants[year] : rsuAmount} onChange={(v) => updateHistoricalGrant(year, v)} formatDisplay={(v) => `${formatNumber(v)}`} suffix="shares" min={0} max={year <= 2020 ? 100000000 : 10000000} step={1} fontSize="16px" mobileFontSize="15px" freeInput={year <= 2020} />
                             </div>
                             <input
                               type="range"
@@ -1092,7 +1100,7 @@
                       Vesting Schedule
                     </h2>
                     <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>
-                      4-year vesting: 25% annually (grants issued in December)
+                      4-year vesting: 25% annually (grants issued in December){startYear <= 2020 && <span style={{ color: 'rgba(45, 212, 191, 0.6)' }}> • pre-merger RSUs 100% vested</span>}
                     </p>
                     <p style={{ color: 'rgba(224, 112, 133, 0.6)', fontSize: '11px', marginTop: '8px' }}>
                       All values shown after {taxRate}% estimated tax
