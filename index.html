@@ -11,7 +11,7 @@
   <script src="https://unpkg.com/recharts@2.5.0/umd/Recharts.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { 
+    body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       background: #030306;
       min-height: 100vh;
@@ -192,14 +192,14 @@
   <div id="root" style="display: flex; justify-content: center; align-items: center; min-height: 100vh; color: #2dd4bf; font-family: -apple-system, BlinkMacSystemFont, sans-serif;">
     Loading calculator...
   </div>
-  
+
   <script type="text/babel">
     // Check if Recharts loaded
     if (typeof Recharts === 'undefined') {
       document.getElementById('root').innerHTML = '<div style="color: #f87171;">Error: Failed to load charting library. Please refresh the page.</div>';
       throw new Error('Recharts not loaded');
     }
-    
+
     const { useState, useMemo, useRef, useEffect } = React;
     const { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, ComposedChart, Line } = Recharts;
 
@@ -283,9 +283,9 @@
       }
 
       return (
-        <span 
+        <span
           onClick={handleClick}
-          style={{ 
+          style={{
             cursor: 'pointer',
             display: 'inline-flex',
             alignItems: 'baseline',
@@ -317,13 +317,13 @@
     // Responsive hook
     function useWindowSize() {
       const [size, setSize] = useState({ width: typeof window !== 'undefined' ? window.innerWidth : 1200 });
-      
+
       useEffect(() => {
         const handleResize = () => setSize({ width: window.innerWidth });
         window.addEventListener('resize', handleResize);
         return () => window.removeEventListener('resize', handleResize);
       }, []);
-      
+
       return size;
     }
 
@@ -331,28 +331,33 @@
       const { width } = useWindowSize();
       const isMobile = width < 640;
       const isTablet = width < 900;
-      
+
       const [rsuAmount, setRsuAmount] = useState(1000);
-      const [ipoValuation, setIpoValuation] = useState(20);
+      const [ipoValuation, setIpoValuation] = useState(15.66);
       const [showAdvanced, setShowAdvanced] = useState(false);
-      const [totalShares, setTotalShares] = useState(300);
+      const [totalShares, setTotalShares] = useState(261);
       const [yearsWorked, setYearsWorked] = useState(8);
       const [startYear, setStartYear] = useState(2023);
       const [activeTab, setActiveTab] = useState('scenarios');
-      const [taxRate, setTaxRate] = useState(40);
+      const [taxRate, setTaxRate] = useState(35);
       const [copied, setCopied] = useState(false);
-      
+
       const [historicalGrants, setHistoricalGrants] = useState({
         2020: null, 2021: null, 2022: null, 2023: null, 2024: null, 2025: null, 2026: null,
       });
-      
+
       const [enabledYears, setEnabledYears] = useState({
         2020: false, 2021: false, 2022: false, 2023: false, 2024: false, 2025: false, 2026: false,
       });
 
       // Growth rate constants
+      const BEAR_GROWTH = -10;
+      const FLAT_GROWTH = 0;
       const BASE_GROWTH = 10;
-      const BULL_GROWTH = 60;
+      const BULL_GROWTH = 50;
+
+      // Conversion ratio applied to translate private-company shares / promissory units into public-company RSUs (per S-1)
+      const CONVERSION_RATIO = 0.59676162;
 
       const pricePerShare = useMemo(() => (ipoValuation * 1000) / totalShares, [ipoValuation, totalShares]);
 
@@ -363,22 +368,22 @@
           if (enabledYears[year] && historicalGrants[year] !== null) return historicalGrants[year];
           return rsuAmount;
         };
-        
+
         const data = [];
         const IPO_YEAR = 2026;
         let cumulativeGranted = 0;
-        
+
         for (let i = 0; i < yearsWorked; i++) {
           const calendarYear = startYear + i;
           const grantThisYear = getGrantForYear(calendarYear);
           cumulativeGranted += grantThisYear;
-          
+
           // Vesting calculation
           let vested = 0;
           for (let g = 0; g <= i; g++) {
             const grantCalendarYear = startYear + g;
             const grantAmount = getGrantForYear(grantCalendarYear);
-            
+
             if (grantCalendarYear <= 2020) {
               // Pre-merger RSUs are 100% vested immediately
               vested += grantAmount;
@@ -389,26 +394,41 @@
             }
             // If g === i and post-merger, grant was just issued in December, nothing vested yet
           }
-          
+
           const yearsOfGrowth = calendarYear >= IPO_YEAR ? calendarYear - IPO_YEAR : 0;
+          const bearMultiplier = Math.pow(1 + BEAR_GROWTH / 100, yearsOfGrowth);
+          const flatMultiplier = Math.pow(1 + FLAT_GROWTH / 100, yearsOfGrowth);
           const baseMultiplier = Math.pow(1 + BASE_GROWTH / 100, yearsOfGrowth);
           const bullMultiplier = Math.pow(1 + BULL_GROWTH / 100, yearsOfGrowth);
-          
+
+          const bearPrice = pricePerShare * bearMultiplier;
+          const flatPrice = pricePerShare * flatMultiplier;
           const basePrice = pricePerShare * baseMultiplier;
           const bullPrice = pricePerShare * bullMultiplier;
-          
+
+          // Translate private-company units into public-company RSUs.
+          // Vesting schedule above is unchanged; only the resulting share counts are scaled.
+          const vestedRSU = vested * CONVERSION_RATIO;
+          const grantedRSU = cumulativeGranted * CONVERSION_RATIO;
+
           data.push({
             year: `'${String(calendarYear).slice(2)}`,
             fullYear: calendarYear,
             yearIndex: i,
             grantThisYear: grantThisYear,
-            totalGranted: cumulativeGranted,
-            vested: Math.round(vested),
-            unvested: Math.round(cumulativeGranted - vested),
-            base: vested * basePrice,
-            bull: vested * bullPrice,
+            totalGranted: grantedRSU,
+            vested: Math.round(vestedRSU),
+            unvested: Math.round(grantedRSU - vestedRSU),
+            bear: vestedRSU * bearPrice,
+            flat: vestedRSU * flatPrice,
+            base: vestedRSU * basePrice,
+            bull: vestedRSU * bullPrice,
+            bearValuation: ipoValuation * bearMultiplier,
+            flatValuation: ipoValuation * flatMultiplier,
             baseValuation: ipoValuation * baseMultiplier,
             bullValuation: ipoValuation * bullMultiplier,
+            bearPrice,
+            flatPrice,
             basePrice,
             bullPrice,
           });
@@ -419,35 +439,46 @@
       const finalScenarioValues = useMemo(() => {
         const last = scenarioData[scenarioData.length - 1];
         return {
+          bear: last?.bear || 0,
+          flat: last?.flat || 0,
           base: last?.base || 0,
           bull: last?.bull || 0,
           vested: last?.vested || 0,
           unvested: last?.unvested || 0,
           totalGranted: last?.totalGranted || 0,
+          bearValuation: last?.bearValuation || ipoValuation,
+          flatValuation: last?.flatValuation || ipoValuation,
           baseValuation: last?.baseValuation || ipoValuation,
           bullValuation: last?.bullValuation || ipoValuation,
         };
       }, [scenarioData, ipoValuation]);
 
-      // IPO stats (summer 2026)
+      // IPO stats (summer 2026).
+      // Grants vest each December, so the last vesting before a summer 2026 IPO is December 2025.
+      // "Vested by IPO" therefore reflects the Dec-2025 (IPO_YEAR - 1) vesting snapshot, not Dec 2026.
       const ipoStats = useMemo(() => {
         const IPO_YEAR = 2026;
-        const ipoYearData = scenarioData.find(d => d.fullYear === IPO_YEAR);
-        
+        const LAST_VEST_YEAR = IPO_YEAR - 1; // Dec 2025 — last December vest before the summer 2026 IPO
+        const preIpoData = scenarioData.find(d => d.fullYear === LAST_VEST_YEAR);
+
         let vestedAtIpo = 0;
         let totalGrantedAtIpo = 0;
-        
-        if (ipoYearData) {
-          vestedAtIpo = ipoYearData.vested;
-          totalGrantedAtIpo = ipoYearData.totalGranted;
-        } else if (startYear + yearsWorked - 1 < IPO_YEAR) {
-          // Timeline ends before IPO
+
+        if (preIpoData) {
+          vestedAtIpo = preIpoData.vested;
+          totalGrantedAtIpo = preIpoData.totalGranted;
+        } else if (startYear > LAST_VEST_YEAR) {
+          // Timeline starts after the last pre-IPO vest → nothing vested by a summer 2026 IPO
+          vestedAtIpo = 0;
+          totalGrantedAtIpo = 0;
+        } else if (startYear + yearsWorked - 1 < LAST_VEST_YEAR) {
+          // Timeline ends before the last pre-IPO vest → use final modeled state
           vestedAtIpo = finalScenarioValues.vested;
           totalGrantedAtIpo = finalScenarioValues.totalGranted;
         }
-        
+
         return {
-          singleGrantValue: rsuAmount * pricePerShare,
+          singleGrantValue: rsuAmount * CONVERSION_RATIO * pricePerShare,
           cumulativeValueAtIpo: vestedAtIpo * pricePerShare,
           vestedAtIpo,
           totalGrantedAtIpo,
@@ -478,28 +509,34 @@
 
       const copyTableToClipboard = () => {
         // Header row
-        const headers = ['Year', 'New Shares', 'New Value (Base)', 'New Value (Bull)', 'Total Vested', 'Portfolio Base', 'Portfolio Bull'];
-        
+        const headers = ['Year', 'New Shares', 'New Value (Bear)', 'New Value (Flat)', 'New Value (Base)', 'New Value (Bull)', 'Total Vested', 'Portfolio Bear', 'Portfolio Flat', 'Portfolio Base', 'Portfolio Bull'];
+
         // Data rows
         const rows = scenarioData.map((year, i) => {
           const prevVested = i > 0 ? scenarioData[i-1].vested : 0;
           const newlyVested = year.vested - prevVested;
+          const newVestingBearValue = afterTax(newlyVested * year.bearPrice);
+          const newVestingFlatValue = afterTax(newlyVested * year.flatPrice);
           const newVestingBaseValue = afterTax(newlyVested * year.basePrice);
           const newVestingBullValue = afterTax(newlyVested * year.bullPrice);
-          
+
           return [
             year.fullYear,
             newlyVested,
+            newVestingBearValue.toFixed(2),
+            newVestingFlatValue.toFixed(2),
             newVestingBaseValue.toFixed(2),
             newVestingBullValue.toFixed(2),
             year.vested,
+            afterTax(year.bear).toFixed(2),
+            afterTax(year.flat).toFixed(2),
             afterTax(year.base).toFixed(2),
             afterTax(year.bull).toFixed(2)
           ].join('\t');
         });
-        
+
         const tsv = [headers.join('\t'), ...rows].join('\n');
-        
+
         navigator.clipboard.writeText(tsv).then(() => {
           setCopied(true);
           setTimeout(() => setCopied(false), 2000);
@@ -526,11 +563,11 @@
         if (active && payload?.length) {
           const data = payload[0].payload;
           return (
-            <div style={{ 
+            <div style={{
               background: 'rgba(0, 0, 0, 0.95)',
               backdropFilter: 'blur(20px)',
               border: '1px solid rgba(45, 212, 191, 0.4)',
-              borderRadius: '16px', 
+              borderRadius: '16px',
               padding: '16px 20px',
               boxShadow: '0 20px 40px rgba(0, 0, 0, 0.5)',
               minWidth: '200px'
@@ -551,6 +588,20 @@
                   </div>
                   <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '11px' }}>${data.baseValuation.toFixed(1)}B valuation</div>
                 </div>
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ color: '#94a3b8', fontSize: '12px' }}>Flat ({FLAT_GROWTH}% CAGR)</span>
+                    <span style={{ color: '#fff', fontWeight: '600' }}>{formatCurrency(afterTax(data.flat))}</span>
+                  </div>
+                  <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '11px' }}>${data.flatValuation.toFixed(1)}B valuation</div>
+                </div>
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ color: '#f87171', fontSize: '12px' }}>Bear ({BEAR_GROWTH}% CAGR)</span>
+                    <span style={{ color: '#fff', fontWeight: '600' }}>{formatCurrency(afterTax(data.bear))}</span>
+                  </div>
+                  <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '11px' }}>${data.bearValuation.toFixed(1)}B valuation</div>
+                </div>
               </div>
               <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', marginTop: '12px', paddingTop: '8px', color: 'rgba(255,255,255,0.4)', fontSize: '11px' }}>
                 {formatNumber(data.vested)} shares vested <span style={{ color: 'rgba(224, 112, 133, 0.6)' }}>(before tax)</span>
@@ -562,7 +613,7 @@
       };
 
       const availableYears = [2020, 2021, 2022, 2023, 2024, 2025, 2026];
-      
+
       const getYearLabel = (year) => {
         if (year === 2020) {
           return startYear <= 2020 ? "Pre-merger RSUs*" : "Pre-merger RSUs";
@@ -571,8 +622,8 @@
       };
 
       return (
-        <div style={{ 
-          minHeight: '100vh', 
+        <div style={{
+          minHeight: '100vh',
           background: '#030306',
           position: 'relative',
           overflow: 'hidden',
@@ -605,20 +656,20 @@
             pointerEvents: 'none',
             animation: 'float 25s ease-in-out infinite reverse'
           }} />
-          
+
           {/* Content */}
-          <div style={{ 
-            position: 'relative', 
-            padding: isMobile ? '24px 16px' : '48px 24px', 
-            maxWidth: '920px', 
-            margin: '0 auto' 
+          <div style={{
+            position: 'relative',
+            padding: isMobile ? '24px 16px' : '48px 24px',
+            maxWidth: '920px',
+            margin: '0 auto'
           }}>
-            
+
             {/* Header */}
             <div style={{ textAlign: 'center', marginBottom: isMobile ? '32px' : '48px' }}>
-              <div style={{ 
-                display: 'inline-flex', 
-                alignItems: 'center', 
+              <div style={{
+                display: 'inline-flex',
+                alignItems: 'center',
                 gap: '10px',
                 padding: '6px 16px',
                 background: 'rgba(45, 212, 191, 0.1)',
@@ -626,27 +677,27 @@
                 marginBottom: '20px',
                 border: '1px solid rgba(45, 212, 191, 0.25)'
               }}>
-                <div style={{ 
-                  width: '8px', 
-                  height: '8px', 
-                  borderRadius: '50%', 
+                <div style={{
+                  width: '8px',
+                  height: '8px',
+                  borderRadius: '50%',
                   background: '#2dd4bf',
                   boxShadow: '0 0 12px #2dd4bf',
-                  animation: 'pulse 2s ease-in-out infinite' 
+                  animation: 'pulse 2s ease-in-out infinite'
                 }} />
                 <span style={{ color: '#2dd4bf', fontSize: '11px', fontWeight: '700', letterSpacing: '0.15em', textTransform: 'uppercase' }}>
                   Equity Calculator
                 </span>
               </div>
-              <h1 style={{ 
-                fontSize: isMobile ? '32px' : '44px', 
-                fontWeight: '700', 
-                color: 'white', 
-                marginBottom: '12px', 
+              <h1 style={{
+                fontSize: isMobile ? '32px' : '44px',
+                fontWeight: '700',
+                color: 'white',
+                marginBottom: '12px',
                 letterSpacing: '-0.03em',
                 lineHeight: 1.1
               }}>
-                <span style={{ 
+                <span style={{
                   color: '#2dd4bf',
                   textShadow: '0 0 60px rgba(45, 212, 191, 0.5)'
                 }}>Quantinuum</span>
@@ -660,38 +711,42 @@
 
             {/* Main Controls */}
             <div className="card" style={{ padding: isMobile ? '24px 20px' : '36px', marginBottom: '20px' }}>
-              <div style={{ 
-                display: 'flex', 
+              <div style={{
+                display: 'flex',
                 flexDirection: 'column',
-                gap: '32px' 
+                gap: '32px'
               }}>
-                
+
                 {/* RSU Amount */}
                 <div>
-                  <label style={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    gap: '8px', 
-                    color: 'rgba(255, 255, 255, 0.5)', 
-                    fontSize: '11px', 
-                    fontWeight: '600', 
-                    textTransform: 'uppercase', 
+                  <label style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    color: 'rgba(255, 255, 255, 0.5)',
+                    fontSize: '11px',
+                    fontWeight: '600',
+                    textTransform: 'uppercase',
                     letterSpacing: '0.12em',
                     marginBottom: '16px'
                   }}>
                     <div style={{ width: '3px', height: '12px', borderRadius: '2px', background: '#2dd4bf' }} />
                     Annual RSU Grant
                   </label>
-                  <div style={{ marginBottom: '20px' }}>
+                  <div style={{ marginBottom: '8px' }}>
                     <EditableNumber
                       value={rsuAmount}
                       onChange={setRsuAmount}
                       formatDisplay={formatNumber}
-                      suffix="shares/yr"
+                      suffix="pre-IPO RSUs/yr"
                       min={0}
                       max={10000000}
                       step={1}
                     />
+                  </div>
+                  <div style={{ marginBottom: '20px', fontSize: '12px', fontWeight: '500', color: 'rgba(45, 212, 191, 0.75)' }}>
+                    = {formatNumber(Math.round(rsuAmount * CONVERSION_RATIO))} post-IPO shares/yr
+                    <span style={{ color: 'rgba(255,255,255,0.3)' }}> (×0.5968)</span>
                   </div>
                   <input
                     type="range"
@@ -709,31 +764,35 @@
 
                 {/* IPO Valuation */}
                 <div>
-                  <label style={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    gap: '8px', 
-                    color: 'rgba(255, 255, 255, 0.5)', 
-                    fontSize: '11px', 
-                    fontWeight: '600', 
-                    textTransform: 'uppercase', 
+                  <label style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    color: 'rgba(255, 255, 255, 0.5)',
+                    fontSize: '11px',
+                    fontWeight: '600',
+                    textTransform: 'uppercase',
                     letterSpacing: '0.12em',
                     marginBottom: '16px'
                   }}>
                     <div style={{ width: '3px', height: '12px', borderRadius: '2px', background: '#2dd4bf' }} />
                     IPO Valuation
                   </label>
-                  <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'baseline', flexWrap: 'wrap', gap: '2px' }}>
+                  <div style={{ marginBottom: '8px', display: 'flex', alignItems: 'baseline', flexWrap: 'wrap', gap: '2px' }}>
                     <EditableNumber
                       value={ipoValuation}
                       onChange={setIpoValuation}
                       formatDisplay={(v) => v.toFixed(1)}
                       prefix="$"
-                      suffix="billion"
+                      suffix="billion market cap"
                       min={5}
                       max={250}
                       step={0.5}
                     />
+                  </div>
+                  <div style={{ marginBottom: '20px', fontSize: '12px', fontWeight: '500', color: 'rgba(45, 212, 191, 0.75)' }}>
+                    = ${pricePerShare.toFixed(2)} per share
+                    <span style={{ color: 'rgba(255,255,255,0.3)' }}> (÷ {totalShares}M shares)</span>
                   </div>
                   <input
                     type="range"
@@ -751,14 +810,14 @@
 
                 {/* Tax Rate */}
                 <div>
-                  <label style={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    gap: '10px', 
-                    color: 'rgba(255, 255, 255, 0.5)', 
-                    fontSize: '11px', 
-                    fontWeight: '600', 
-                    textTransform: 'uppercase', 
+                  <label style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    color: 'rgba(255, 255, 255, 0.5)',
+                    fontSize: '11px',
+                    fontWeight: '600',
+                    textTransform: 'uppercase',
                     letterSpacing: '0.12em',
                     marginBottom: '16px'
                   }}>
@@ -794,6 +853,54 @@
                     Illustrative only. Actual rate varies by country, state, filing status, income level, capital gains treatment, holding period, and other factors.
                   </p>
                 </div>
+
+                {/* Customize Past Grants */}
+                <div>
+                  <label style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    color: 'rgba(255, 255, 255, 0.5)',
+                    fontSize: '11px',
+                    fontWeight: '600',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.12em',
+                    marginBottom: '16px'
+                  }}>
+                    <div style={{ width: '3px', height: '12px', borderRadius: '2px', background: '#2dd4bf' }} />
+                    Customize Past Grants
+                  </label>
+                  <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)', marginBottom: '16px', lineHeight: 1.5 }}>
+                    Tap years to customize. Other years use default: <span style={{ color: '#2dd4bf', fontWeight: '600' }}>{formatNumber(rsuAmount)}</span>
+                  </p>
+
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '20px' }}>
+                    {availableYears.map(year => (
+                      <button key={year} className={`year-chip ${enabledYears[year] ? 'on' : 'off'}`} onClick={() => toggleYear(year)}>
+                        {getYearLabel(year)}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {availableYears.filter(year => enabledYears[year]).map(year => (
+                      <div key={year} style={{ padding: '16px', background: 'rgba(45, 212, 191, 0.05)', borderRadius: '12px', border: '1px solid rgba(45, 212, 191, 0.15)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                          <span style={{ color: '#2dd4bf', fontSize: '14px', fontWeight: '600' }}>{getYearLabel(year)}</span>
+                          <EditableNumber value={historicalGrants[year] !== null ? historicalGrants[year] : rsuAmount} onChange={(v) => updateHistoricalGrant(year, v)} formatDisplay={(v) => `${formatNumber(v)}`} suffix="shares" min={0} max={year <= 2020 ? 100000000 : 10000000} step={1} fontSize="16px" mobileFontSize="15px" freeInput={year <= 2020} />
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="460"
+                          step="1"
+                          value={valueToSlider(historicalGrants[year] !== null ? historicalGrants[year] : rsuAmount)}
+                          onChange={(e) => updateHistoricalGrant(year, sliderToValue(Number(e.target.value)))}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
 
               {/* Advanced Toggle */}
@@ -801,7 +908,7 @@
                 <span className="icon-box">{showAdvanced ? '−' : '+'}</span>
                 Advanced Settings
               </button>
-              
+
               {showAdvanced && (
                 <div className="card-inner" style={{ marginTop: '12px', padding: isMobile ? '20px 16px' : '24px' }}>
                   <div style={{ marginBottom: '28px' }}>
@@ -814,51 +921,12 @@
                     <input type="range" min="250" max="1000" step="10" value={totalShares} onChange={(e) => setTotalShares(Number(e.target.value))} />
                     <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)', marginTop: '10px' }}>Actual count in S-1 filing.</p>
                   </div>
-
-                  <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '20px' }}>
-                    <div style={{ marginBottom: '16px' }}>
-                      <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: '14px', fontWeight: '500' }}>Customize Past Grants</span>
-                    </div>
-
-                    <div>
-                      <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)', marginBottom: '16px', lineHeight: 1.5 }}>
-                        Tap years to customize. Other years use default: <span style={{ color: '#2dd4bf', fontWeight: '600' }}>{formatNumber(rsuAmount)}</span>
-                      </p>
-                      
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '20px' }}>
-                        {availableYears.map(year => (
-                          <button key={year} className={`year-chip ${enabledYears[year] ? 'on' : 'off'}`} onClick={() => toggleYear(year)}>
-                            {getYearLabel(year)}
-                          </button>
-                        ))}
-                      </div>
-
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                        {availableYears.filter(year => enabledYears[year]).map(year => (
-                          <div key={year} style={{ padding: '16px', background: 'rgba(45, 212, 191, 0.05)', borderRadius: '12px', border: '1px solid rgba(45, 212, 191, 0.15)' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
-                              <span style={{ color: '#2dd4bf', fontSize: '14px', fontWeight: '600' }}>{getYearLabel(year)}</span>
-                              <EditableNumber value={historicalGrants[year] !== null ? historicalGrants[year] : rsuAmount} onChange={(v) => updateHistoricalGrant(year, v)} formatDisplay={(v) => `${formatNumber(v)}`} suffix="shares" min={0} max={year <= 2020 ? 100000000 : 10000000} step={1} fontSize="16px" mobileFontSize="15px" freeInput={year <= 2020} />
-                            </div>
-                            <input
-                              type="range"
-                              min="0"
-                              max="460"
-                              step="1"
-                              value={valueToSlider(historicalGrants[year] !== null ? historicalGrants[year] : rsuAmount)}
-                              onChange={(e) => updateHistoricalGrant(year, sliderToValue(Number(e.target.value)))}
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
                 </div>
               )}
             </div>
 
             {/* IPO Summary Card */}
-            <div style={{ 
+            <div style={{
               background: 'linear-gradient(165deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%)',
               backdropFilter: 'blur(40px)',
               border: '1px solid rgba(45, 212, 191, 0.2)',
@@ -876,17 +944,17 @@
                 height: '3px',
                 background: 'linear-gradient(90deg, #2dd4bf, #14b8a6, #2ecc71)'
               }} />
-              
+
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '20px' }}>
                 <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#2dd4bf', boxShadow: '0 0 8px #2dd4bf' }} />
                 <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
                   IPO Projected Value
                 </span>
               </div>
-              
-              <div style={{ 
-                display: 'grid', 
-                gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)', 
+
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)',
                 gap: isMobile ? '16px' : '24px',
                 marginBottom: '20px'
               }}>
@@ -898,10 +966,10 @@
                     {formatCurrency(afterTax(ipoStats.singleGrantValue))}
                   </div>
                   <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '11px', marginTop: '4px' }}>
-                    {formatNumber(rsuAmount)} shares fully vested
+                    {formatNumber(Math.round(rsuAmount * CONVERSION_RATIO))} shares fully vested
                   </div>
                 </div>
-                
+
                 <div>
                   <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                     Vested by IPO <span style={{ color: 'rgba(224, 112, 133, 0.7)', fontSize: '9px' }}>(after tax)</span>
@@ -910,13 +978,13 @@
                     {formatCurrency(afterTax(ipoStats.cumulativeValueAtIpo))}
                   </div>
                   <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '11px', marginTop: '4px' }}>
-                    {formatNumber(ipoStats.vestedAtIpo)} of {formatNumber(ipoStats.totalGrantedAtIpo)} shares
+                    {formatNumber(ipoStats.vestedAtIpo)} of {formatNumber(ipoStats.totalGrantedAtIpo)} shares (as of Dec 2025)
                   </div>
                 </div>
               </div>
-              
+
               {/* Share Price */}
-              <div style={{ 
+              <div style={{
                 padding: '14px 20px',
                 background: 'rgba(45, 212, 191, 0.06)',
                 borderRadius: '14px',
@@ -933,6 +1001,9 @@
                   (${ipoValuation}B ÷ {totalShares}M shares)
                 </span>
               </div>
+              <div style={{ marginTop: '10px', color: 'rgba(255,255,255,0.3)', fontSize: '10px', textAlign: 'center', fontStyle: 'italic', lineHeight: 1.5 }}>
+                Share counts shown as public RSUs (private shares / promissory units × 0.5968 S-1 conversion ratio).
+              </div>
             </div>
 
             {/* Tabs */}
@@ -941,7 +1012,7 @@
                 { id: 'scenarios', label: 'Growth Scenarios' },
                 { id: 'timeline', label: 'Vesting Timeline' },
               ].map(tab => (
-                <button 
+                <button
                   key={tab.id}
                   className={`tab-btn ${activeTab === tab.id ? 'active' : ''}`}
                   onClick={() => setActiveTab(tab.id)}
@@ -991,7 +1062,15 @@
                       ${ipoValuation}B at IPO (summer 2026), then growth begins
                     </p>
                   </div>
-                  <div style={{ display: 'flex', gap: '16px' }}>
+                  <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div style={{ width: '12px', height: '3px', background: '#f87171', borderRadius: '2px' }} />
+                      <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: '11px' }}>Bear {BEAR_GROWTH}%</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div style={{ width: '12px', height: '3px', background: '#94a3b8', borderRadius: '2px' }} />
+                      <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: '11px' }}>Flat {FLAT_GROWTH}%</span>
+                    </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <div style={{ width: '12px', height: '3px', background: '#2dd4bf', borderRadius: '2px' }} />
                       <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: '11px' }}>Base {BASE_GROWTH}%</span>
@@ -1002,7 +1081,7 @@
                     </div>
                   </div>
                 </div>
-                
+
                 <div style={{ height: isMobile ? '260px' : '320px', marginBottom: '24px' }}>
                   <ResponsiveContainer width="100%" height="100%">
                     <ComposedChart data={scenarioData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
@@ -1018,9 +1097,9 @@
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
                       <XAxis dataKey="year" axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.35)', fontSize: 11 }} />
-                      <YAxis 
-                        axisLine={false} 
-                        tickLine={false} 
+                      <YAxis
+                        axisLine={false}
+                        tickLine={false}
                         tick={{ fill: 'rgba(255,255,255,0.35)', fontSize: 11 }}
                         tickFormatter={(v) => v >= 1e6 ? `$${(v/1e6).toFixed(0)}M` : `$${(v/1e3).toFixed(0)}K`}
                         width={55}
@@ -1028,6 +1107,8 @@
                       <Tooltip content={<ScenarioTooltip />} />
                       <Area type="monotone" dataKey="bull" stroke="transparent" fill="url(#bullGrad)" />
                       <Area type="monotone" dataKey="base" stroke="transparent" fill="url(#baseGrad)" />
+                      <Line type="monotone" dataKey="bear" stroke="#f87171" strokeWidth={2} dot={false} />
+                      <Line type="monotone" dataKey="flat" stroke="#94a3b8" strokeWidth={2} dot={false} />
                       <Line type="monotone" dataKey="bull" stroke="#2ecc71" strokeWidth={2.5} dot={false} />
                       <Line type="monotone" dataKey="base" stroke="#2dd4bf" strokeWidth={2.5} dot={false} />
                     </ComposedChart>
@@ -1035,9 +1116,9 @@
                 </div>
 
                 {/* Outcome Comparison */}
-                <div style={{ 
-                  padding: '20px', 
-                  background: 'rgba(0, 0, 0, 0.3)', 
+                <div style={{
+                  padding: '20px',
+                  background: 'rgba(0, 0, 0, 0.3)',
                   borderRadius: '16px',
                   border: '1px solid rgba(255,255,255,0.05)'
                 }}>
@@ -1045,6 +1126,34 @@
                     {startYear + yearsWorked - 1} Portfolio Value <span style={{ color: 'rgba(224, 112, 133, 0.7)', fontSize: '9px', textTransform: 'none', letterSpacing: 'normal' }}>(after {taxRate}% tax)</span>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '12px' }}>
+                    <div style={{ padding: '18px', background: 'rgba(248, 113, 113, 0.1)', borderRadius: '12px', border: '1px solid rgba(248, 113, 113, 0.25)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                        <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#f87171' }} />
+                        <span style={{ color: '#f87171', fontSize: '12px', fontWeight: '600' }}>Bear Case</span>
+                        <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '10px' }}>({BEAR_GROWTH}% CAGR)</span>
+                      </div>
+                      <div style={{ fontSize: '28px', fontWeight: '700', color: '#fff', marginBottom: '8px' }}>{formatCurrency(afterTax(finalScenarioValues.bear))}</div>
+                      <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '11px' }}>
+                        Company valuation: <span style={{ color: 'rgba(255,255,255,0.6)' }}>${finalScenarioValues.bearValuation.toFixed(1)}B</span>
+                      </div>
+                      <div style={{ color: 'rgba(255,255,255,0.25)', fontSize: '10px', marginTop: '2px' }}>
+                        Sustained market decline
+                      </div>
+                    </div>
+                    <div style={{ padding: '18px', background: 'rgba(148, 163, 184, 0.1)', borderRadius: '12px', border: '1px solid rgba(148, 163, 184, 0.25)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                        <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#94a3b8' }} />
+                        <span style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '600' }}>Flat Case</span>
+                        <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '10px' }}>({FLAT_GROWTH}% CAGR)</span>
+                      </div>
+                      <div style={{ fontSize: '28px', fontWeight: '700', color: '#fff', marginBottom: '8px' }}>{formatCurrency(afterTax(finalScenarioValues.flat))}</div>
+                      <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '11px' }}>
+                        Company valuation: <span style={{ color: 'rgba(255,255,255,0.6)' }}>${finalScenarioValues.flatValuation.toFixed(1)}B</span>
+                      </div>
+                      <div style={{ color: 'rgba(255,255,255,0.25)', fontSize: '10px', marginTop: '2px' }}>
+                        Price holds at IPO level
+                      </div>
+                    </div>
                     <div style={{ padding: '18px', background: 'rgba(45, 212, 191, 0.1)', borderRadius: '12px', border: '1px solid rgba(45, 212, 191, 0.25)' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
                         <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#2dd4bf' }} />
@@ -1070,7 +1179,7 @@
                         Company valuation: <span style={{ color: 'rgba(255,255,255,0.6)' }}>${finalScenarioValues.bullValuation.toFixed(1)}B</span>
                       </div>
                       <div style={{ color: 'rgba(255,255,255,0.25)', fontSize: '10px', marginTop: '2px' }}>
-                        Quantinuum growth since merger
+                        Rough estimate of Quantinuum valuation CAGR since merger
                       </div>
                     </div>
                   </div>
@@ -1083,7 +1192,7 @@
                     </span>
                   </div>
                   <div style={{ marginTop: '12px', color: 'rgba(255,255,255,0.3)', fontSize: '10px', textAlign: 'center', lineHeight: 1.5 }}>
-                    IPO: Assumed summer 2026 at slider valuation • Base: 10% CAGR (S&P 500 historical) • Bull: 60% CAGR (Quantinuum since merger)
+                    IPO: Assumed summer 2026 at slider valuation • Bear: -10% CAGR • Flat: 0% CAGR • Base: 10% CAGR (S&P 500 historical) • Bull: 50% CAGR (Rough estimate of Quantinuum valuation CAGR since merger)
                   </div>
                   <div style={{ marginTop: '10px', color: 'rgba(255,255,255,0.2)', fontSize: '10px', textAlign: 'center', fontStyle: 'italic', lineHeight: 1.4 }}>
                     *For illustrative purposes only. This calculator does not constitute financial, tax, or investment advice. Projections do not account for taxes, fees, dilution from future funding rounds, or other factors that may significantly impact actual returns. Past performance does not guarantee future results. Consult a qualified financial advisor before making investment decisions.
@@ -1157,11 +1266,11 @@
                         const newVestingBaseValue = afterTax(newlyVested * year.basePrice);
                         const newVestingBullValue = afterTax(newlyVested * year.bullPrice);
                         const isLastRow = i === scenarioData.length - 1;
-                        
+
                         return (
-                          <tr 
-                            key={i} 
-                            style={{ 
+                          <tr
+                            key={i}
+                            style={{
                               borderBottom: isLastRow ? 'none' : '1px solid rgba(255,255,255,0.05)',
                               background: isLastRow ? 'rgba(45, 212, 191, 0.05)' : 'transparent'
                             }}
@@ -1193,10 +1302,10 @@
                 </div>
 
                 {/* Forfeiture Note */}
-                <div style={{ 
-                  marginTop: '20px', 
-                  padding: '14px 16px', 
-                  background: 'rgba(248, 113, 113, 0.08)', 
+                <div style={{
+                  marginTop: '20px',
+                  padding: '14px 16px',
+                  background: 'rgba(248, 113, 113, 0.08)',
                   borderRadius: '12px',
                   border: '1px solid rgba(248, 113, 113, 0.15)'
                 }}>
