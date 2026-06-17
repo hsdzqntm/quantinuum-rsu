@@ -9,6 +9,9 @@
   <script src="https://unpkg.com/prop-types@15/prop-types.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://unpkg.com/recharts@2.5.0/umd/Recharts.js"></script>
+  <script>
+    Babel.registerPreset('react-classic', { presets: [[Babel.availablePresets['react'], { runtime: 'classic' }]] });
+  </script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -193,7 +196,7 @@
     Loading calculator...
   </div>
 
-  <script type="text/babel">
+  <script type="text/babel" data-presets="react-classic">
     // Check if Recharts loaded
     if (typeof Recharts === 'undefined') {
       document.getElementById('root').innerHTML = '<div style="color: #f87171;">Error: Failed to load charting library. Please refresh the page.</div>';
